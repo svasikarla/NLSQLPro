@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server"
-import { Pool } from "pg"
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-})
+import { createClient } from "@/lib/supabase/server"
+import { getActiveConnection, getConnectionPool } from "@/lib/connection-manager"
 
 interface ColumnInfo {
   name: string
@@ -34,9 +31,34 @@ interface SchemaInfo {
 
 export async function GET() {
   try {
-    if (!process.env.DATABASE_URL) {
+    const supabase = await createClient()
+
+    // Get authenticated user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Get active connection
+    const activeConnection = await getActiveConnection(user.id)
+
+    if (!activeConnection) {
       return NextResponse.json(
-        { error: "DATABASE_URL not configured" },
+        { error: "No active database connection. Please activate a connection in Settings." },
+        { status: 400 }
+      )
+    }
+
+    // Get connection pool
+    const pool = await getConnectionPool(user.id, activeConnection.id)
+
+    if (!pool) {
+      return NextResponse.json(
+        { error: "Failed to establish database connection" },
         { status: 500 }
       )
     }

@@ -38,10 +38,19 @@ export default function Header() {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex gap-3">
-            <Button variant="outline" className="border-border hover:bg-card bg-transparent">
+            <Button
+              variant="outline"
+              className="border-border hover:bg-card bg-transparent"
+              onClick={() => (window.location.href = "/auth/login")}
+            >
               Sign In
             </Button>
-            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">Get Started Free</Button>
+            <Button
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              onClick={() => (window.location.href = "/auth/signup")}
+            >
+              Get Started Free
+            </Button>
           </div>
 
           {/* Mobile Menu Button */}
@@ -67,10 +76,17 @@ export default function Header() {
                 Testimonials
               </Link>
               <div className="flex flex-col gap-2 pt-2">
-                <Button variant="outline" className="border-border hover:bg-card w-full bg-transparent">
+                <Button
+                  variant="outline"
+                  className="border-border hover:bg-card w-full bg-transparent"
+                  onClick={() => (window.location.href = "/auth/login")}
+                >
                   Sign In
                 </Button>
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground w-full">
+                <Button
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
+                  onClick={() => (window.location.href = "/auth/signup")}
+                >
                   Get Started Free
                 </Button>
               </div>

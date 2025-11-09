@@ -4,26 +4,26 @@ import { Star } from "lucide-react"
 
 const testimonials = [
   {
-    quote: "NLSQL Pro reduced our reporting time from 2 hours to 2 minutes. The ROI was immediate and measurable.",
-    author: "Sarah Chen",
-    role: "VP of Data Analytics",
-    company: "FinanceCore",
+    quote: "Being able to query my database using natural language is incredible. No more struggling with JOIN syntax!",
+    author: "Alex Johnson",
+    role: "Full-Stack Developer",
+    company: "Indie Projects",
     rating: 5,
   },
   {
     quote:
-      "The enterprise security features gave us the confidence to deploy across our entire organization. Compliance was seamless.",
-    author: "Michael Rodriguez",
-    role: "Chief Data Officer",
-    company: "Acme Healthcare",
+      "The schema visualization and ER diagrams help me understand my database structure at a glance. Very helpful for new projects.",
+    author: "Maria Garcia",
+    role: "Data Analyst",
+    company: "Startup Inc",
     rating: 5,
   },
   {
     quote:
-      "Our business analysts can now query our database without technical training. Productivity increased by 300%.",
-    author: "Emily Thompson",
-    role: "Director of Business Intelligence",
-    company: "RetailGiant",
+      "I love that I can review and edit the generated SQL before running it. Perfect balance of automation and control.",
+    author: "David Kim",
+    role: "Backend Engineer",
+    company: "Tech Solutions",
     rating: 5,
   },
 ]
@@ -33,9 +33,9 @@ export default function TestimonialsSection() {
     <section id="testimonials" className="py-20 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-4xl sm:text-5xl font-bold mb-6 text-balance">Loved by Data Teams</h2>
+          <h2 className="text-4xl sm:text-5xl font-bold mb-6 text-balance">What Developers Are Saying</h2>
           <p className="text-lg text-muted-foreground text-balance">
-            See real ROI and productivity gains from industry leaders
+            Real feedback from developers using NLSQL Pro
           </p>
         </div>
 

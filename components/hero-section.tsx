@@ -29,8 +29,7 @@ export default function HeroSection() {
 
           {/* Subheadline */}
           <p className="text-lg sm:text-xl text-muted-foreground mb-12 max-w-2xl mx-auto text-balance leading-relaxed">
-            Transform natural language into optimized SQL queries instantly. Enterprise-grade security, real-time
-            insights, and zero SQL knowledge required.
+            Transform natural language into PostgreSQL queries using Claude AI. Secure, fast, and transparent - no SQL knowledge required.
           </p>
 
           {/* CTA Buttons with enhanced styling */}
@@ -38,18 +37,19 @@ export default function HeroSection() {
             <Button
               size="lg"
               className="group bg-gradient-to-r from-primary to-accent hover:shadow-2xl hover:shadow-primary/50 text-primary-foreground text-base h-13 px-8 font-semibold transition-all duration-300 hover:scale-105"
-              onClick={() => window.location.href = "/query"}
+              onClick={() => window.location.href = "/auth/signup"}
             >
-              Try Free Demo
+              Get Started Free
               <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
             </Button>
             <Button
               size="lg"
               variant="outline"
               className="border-2 border-primary/30 hover:border-primary hover:bg-primary/10 text-base h-13 px-8 font-semibold backdrop-blur-sm transition-all duration-300 hover:scale-105"
+              onClick={() => window.location.href = "/query"}
             >
               <Database size={18} className="mr-2" />
-              Schedule Enterprise Demo
+              Try Live Demo
             </Button>
           </div>
 

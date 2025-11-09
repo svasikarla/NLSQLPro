@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { ArrowRight, Database, Loader2, Copy, Check, Download, Edit3, RotateCcw } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { ArrowRight, Database, Loader2, Copy, Check, Download, Edit3, RotateCcw, Settings, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
@@ -9,6 +10,7 @@ import { SchemaViewer } from "@/components/schema-viewer"
 import { ErrorDisplay } from "@/components/error-display"
 import { QueryHistory } from "@/components/query-history"
 import { useQueryHistory } from "@/hooks/use-query-history"
+import { createClient } from "@/lib/supabase/client"
 
 interface QueryResult {
   sql: string
@@ -19,6 +21,9 @@ interface QueryResult {
 }
 
 export default function QueryPage() {
+  const router = useRouter()
+  const supabase = createClient()
+
   const [naturalQuery, setNaturalQuery] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
@@ -29,8 +34,39 @@ export default function QueryPage() {
   const [error, setError] = useState("")
   const [errorContext, setErrorContext] = useState<"generation" | "execution" | "schema">("generation")
   const [copied, setCopied] = useState(false)
+  const [activeConnection, setActiveConnection] = useState<string | null>(null)
+  const [loadingConnection, setLoadingConnection] = useState(true)
 
   const { history, addToHistory, clearHistory, deleteItem } = useQueryHistory()
+
+  // Fetch active connection on mount
+  useEffect(() => {
+    fetchActiveConnection()
+  }, [])
+
+  const fetchActiveConnection = async () => {
+    try {
+      const response = await fetch("/api/connections/list")
+      if (response.ok) {
+        const data = await response.json()
+        const active = data.connections?.find((c: any) => c.is_active)
+        if (active) {
+          setActiveConnection(`${active.name} (${active.database})`)
+        } else {
+          setActiveConnection(null)
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch active connection:", err)
+    } finally {
+      setLoadingConnection(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push("/auth/login")
+  }
 
   const handleGenerate = async () => {
     if (!naturalQuery.trim()) return
@@ -184,9 +220,21 @@ export default function QueryPage() {
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Database className="text-primary" size={24} />
-            <span className="font-bold text-xl">NLSQL Pro</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Database className="text-primary" size={24} />
+              <span className="font-bold text-xl">NLSQL Pro</span>
+            </div>
+            {!loadingConnection && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Connection:</span>
+                {activeConnection ? (
+                  <span className="font-medium text-primary">{activeConnection}</span>
+                ) : (
+                  <span className="text-amber-600">No active connection</span>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <QueryHistory
@@ -195,8 +243,17 @@ export default function QueryPage() {
               onClearHistory={clearHistory}
               onDeleteItem={deleteItem}
             />
-            <Button variant="outline" size="sm" onClick={() => window.location.href = "/"}>
-              Back to Home
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push("/settings/connections")}
+            >
+              <Settings size={16} className="mr-2" />
+              Settings
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              <LogOut size={16} className="mr-2" />
+              Logout
             </Button>
           </div>
         </div>
@@ -212,6 +269,29 @@ export default function QueryPage() {
             Ask questions in plain English, get instant SQL queries
           </p>
         </div>
+
+        {/* No Active Connection Warning */}
+        {!loadingConnection && !activeConnection && (
+          <Card className="mb-8 p-6 bg-amber-500/10 border-amber-500/20">
+            <div className="flex items-center gap-3">
+              <Database className="text-amber-600" size={24} />
+              <div>
+                <h3 className="font-semibold text-amber-600">No Active Database Connection</h3>
+                <p className="text-sm text-amber-600/80 mt-1">
+                  Please configure and activate a database connection in Settings to start querying.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="ml-auto border-amber-500/30 hover:bg-amber-500/20"
+                onClick={() => router.push("/settings/connections")}
+              >
+                <Settings size={16} className="mr-2" />
+                Go to Settings
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* Schema Viewer */}
         <SchemaViewer />

@@ -5,46 +5,54 @@ import { Button } from "@/components/ui/button"
 
 const plans = [
   {
-    name: "Starter",
-    description: "Perfect for small teams exploring NLSQL",
+    name: "Free",
+    description: "Perfect for individual developers and testing",
     price: "Free",
     period: "Forever",
-    features: ["Up to 100 queries/month", "5 team members", "Basic security", "Email support", "Community access"],
-    cta: "Get Started",
-    featured: false,
-  },
-  {
-    name: "Professional",
-    description: "For growing teams with serious data needs",
-    price: "$20",
-    period: "/month",
     features: [
       "Unlimited queries",
-      "50 team members",
-      "Advanced security & RLS",
-      "Priority support",
-      "Custom integrations",
-      "Real-time dashboards",
-      "Query optimization",
+      "Multiple database connections",
+      "PostgreSQL support",
+      "AI-powered SQL generation",
+      "Export to CSV/JSON",
+      "Query history",
+      "Schema visualization",
     ],
-    cta: "Start 14-Day Trial",
+    cta: "Get Started",
     featured: true,
   },
   {
-    name: "Enterprise",
-    description: "Custom solutions for large organizations",
-    price: "Custom",
-    period: "Contact sales",
+    name: "Pro",
+    description: "Coming soon - For teams and businesses",
+    price: "TBD",
+    period: "Future release",
     features: [
-      "Everything in Professional",
-      "Unlimited team members",
-      "SSO & advanced auth",
+      "Everything in Free",
+      "Team collaboration",
+      "Shared connections",
+      "Advanced permissions",
+      "Priority support",
+      "Extended history",
+      "Custom integrations",
+    ],
+    cta: "Join Waitlist",
+    featured: false,
+  },
+  {
+    name: "Enterprise",
+    description: "Coming soon - Custom solutions for organizations",
+    price: "Custom",
+    period: "Future release",
+    features: [
+      "Everything in Pro",
+      "SSO & MFA",
       "Dedicated support",
       "SLA guarantees",
-      "Custom integrations",
-      "On-premise options",
+      "On-premise deployment",
+      "Custom features",
+      "Compliance assistance",
     ],
-    cta: "Contact Sales",
+    cta: "Contact Us",
     featured: false,
   },
 ]
@@ -91,6 +99,7 @@ export default function PricingSection() {
                     : "border-border hover:bg-card"
                 }`}
                 variant={plan.featured ? "default" : "outline"}
+                onClick={() => (window.location.href = "/auth/signup")}
               >
                 {plan.cta}
               </Button>

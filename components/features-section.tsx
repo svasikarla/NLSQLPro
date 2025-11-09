@@ -6,32 +6,32 @@ const features = [
   {
     icon: Sparkles,
     title: "AI-Powered Generation",
-    description: "Advanced NLP models understand context and generate accurate, optimized SQL queries instantly.",
+    description: "Claude AI understands your database schema and generates accurate PostgreSQL queries from natural language.",
   },
   {
     icon: Zap,
     title: "Lightning Fast",
-    description: "Get results in milliseconds. No waiting, no complexity—just instant data access.",
+    description: "Query your data in seconds. Schema introspection, generation, and execution optimized for speed.",
   },
   {
     icon: Lock,
-    title: "Enterprise Security",
-    description: "Row-level access control, encryption, and compliance with HIPAA, GDPR, and SOC2.",
+    title: "Secure & Isolated",
+    description: "Row-level security ensures users only access their own data. All queries run in read-only mode.",
   },
   {
     icon: Cpu,
-    title: "Iterative Refinement",
-    description: "Refine queries conversationally. Ask follow-ups and get precisely what you need.",
+    title: "Manual SQL Editing",
+    description: "Review and edit generated SQL before execution. Full transparency and control over your queries.",
   },
   {
     icon: Code,
-    title: "Industry-Specific",
-    description: "Healthcare, Finance, E-commerce versions with domain-specific optimizations.",
+    title: "Multi-Database Support",
+    description: "Connect and switch between multiple PostgreSQL databases. Test connections before activation.",
   },
   {
     icon: Shield,
-    title: "Real-Time Insights",
-    description: "Access live data streams and get actionable insights instantly on your dashboard.",
+    title: "Export & History",
+    description: "Export results to CSV/JSON. Query history saved locally for quick access to previous queries.",
   },
 ]
 
