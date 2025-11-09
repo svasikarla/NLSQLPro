@@ -145,10 +145,14 @@ export function SchemaViewer() {
                       className="flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-muted/50"
                     >
                       {column.isPrimaryKey && (
-                        <Key size={12} className="text-amber-500" title="Primary Key" />
+                        <span title="Primary Key">
+                          <Key size={12} className="text-amber-500" />
+                        </span>
                       )}
                       {column.isForeignKey && (
-                        <LinkIcon size={12} className="text-blue-500" title="Foreign Key" />
+                        <span title="Foreign Key">
+                          <LinkIcon size={12} className="text-blue-500" />
+                        </span>
                       )}
                       <span className="font-mono font-medium min-w-[120px]">
                         {column.name}
