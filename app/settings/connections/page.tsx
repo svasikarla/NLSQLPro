@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Database, Plus, Trash2, Power, CheckCircle2, AlertCircle } from "lucide-react"
+import { Database, Plus, Trash2, Power, CheckCircle2, AlertCircle, Edit } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
@@ -35,6 +35,7 @@ export default function ConnectionsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [editingConnection, setEditingConnection] = useState<Connection | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -108,30 +109,57 @@ export default function ConnectionsPage() {
     }
   }
 
+  const handleEditConnection = (connection: Connection) => {
+    setEditingConnection(connection)
+    setFormData({
+      name: connection.name,
+      host: connection.host,
+      port: connection.port.toString(),
+      database: connection.database,
+      username: connection.username,
+      password: "", // Don't populate password for security
+    })
+    setTestStatus("idle")
+    setTestMessage("")
+    setIsDialogOpen(true)
+  }
+
   const handleCreateConnection = async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError("")
     setFormLoading(true)
 
     try {
-      const response = await fetch("/api/connections/create", {
+      const endpoint = editingConnection ? "/api/connections/update" : "/api/connections/create"
+      const body: any = {
+        name: formData.name,
+        host: formData.host,
+        port: parseInt(formData.port),
+        database: formData.database,
+        username: formData.username,
+        db_type: "postgresql",
+      }
+
+      // Only include password if it's provided
+      if (formData.password) {
+        body.password = formData.password
+      }
+
+      // Add connection ID for update
+      if (editingConnection) {
+        body.connectionId = editingConnection.id
+      }
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.name,
-          host: formData.host,
-          port: parseInt(formData.port),
-          database: formData.database,
-          username: formData.username,
-          password: formData.password,
-          db_type: "postgresql",
-        }),
+        body: JSON.stringify(body),
       })
 
       const data = await response.json()
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to create connection")
+        throw new Error(data.error || `Failed to ${editingConnection ? 'update' : 'create'} connection`)
       }
 
       // Reset form
@@ -146,11 +174,12 @@ export default function ConnectionsPage() {
       setTestStatus("idle")
       setTestMessage("")
       setIsDialogOpen(false)
+      setEditingConnection(null)
 
       // Refresh connections list
       await fetchConnections()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to create connection")
+      setFormError(err instanceof Error ? err.message : `Failed to ${editingConnection ? 'update' : 'create'} connection`)
     } finally {
       setFormLoading(false)
     }
@@ -237,9 +266,11 @@ export default function ConnectionsPage() {
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Add Database Connection</DialogTitle>
+              <DialogTitle>{editingConnection ? 'Edit Database Connection' : 'Add Database Connection'}</DialogTitle>
               <DialogDescription>
-                Enter your PostgreSQL database connection details
+                {editingConnection
+                  ? 'Update your PostgreSQL database connection details'
+                  : 'Enter your PostgreSQL database connection details'}
               </DialogDescription>
             </DialogHeader>
 
@@ -297,13 +328,15 @@ export default function ConnectionsPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1.5 block">Password</label>
+                  <label className="text-sm font-medium mb-1.5 block">
+                    Password {editingConnection && <span className="text-muted-foreground font-normal">(leave blank to keep current)</span>}
+                  </label>
                   <Input
                     type="password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     placeholder="••••••••"
-                    required
+                    required={!editingConnection}
                   />
                 </div>
               </div>
@@ -343,8 +376,10 @@ export default function ConnectionsPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={formLoading || testStatus !== "success"}>
-                  {formLoading ? "Creating..." : "Create Connection"}
+                <Button type="submit" disabled={formLoading || (testStatus !== "success" && testStatus !== "idle")}>
+                  {formLoading
+                    ? (editingConnection ? "Updating..." : "Creating...")
+                    : (editingConnection ? "Update Connection" : "Create Connection")}
                 </Button>
               </div>
             </form>
@@ -405,6 +440,13 @@ export default function ConnectionsPage() {
                         Activate
                       </Button>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditConnection(connection)}
+                    >
+                      <Edit size={16} />
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
