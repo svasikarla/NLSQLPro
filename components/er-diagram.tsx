@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useMemo } from "react"
 import mermaid from "mermaid"
 import { Network, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -48,39 +48,72 @@ function generateMermaidERD(schema: SchemaInfo): string {
   console.log("🔍 generateMermaidERD called with schema:", schema)
   console.log("🔍 Schema tables count:", schema?.tables?.length)
 
+  // Validate schema
+  if (!schema || !schema.tables || schema.tables.length === 0) {
+    console.warn("⚠️ generateMermaidERD: No tables in schema")
+    return "erDiagram\n  %% No tables available\n"
+  }
+
   let mermaidCode = "erDiagram\n"
 
   // Add tables with columns
   schema.tables.forEach((table) => {
+    if (!table || !table.name) {
+      console.warn("⚠️ Skipping invalid table:", table)
+      return
+    }
+
     // Sanitize table name (remove special chars)
     const tableName = table.name.replace(/[^a-zA-Z0-9_]/g, "_")
 
+    if (!tableName) {
+      console.warn("⚠️ Skipping table with empty sanitized name:", table.name)
+      return
+    }
+
     mermaidCode += `  ${tableName} {\n`
-    table.columns.forEach((col) => {
-      // Sanitize column name and type
-      const colName = col.name.replace(/[^a-zA-Z0-9_]/g, "_")
-      const type = col.type.replace(/[^a-zA-Z0-9_]/g, "_")
 
-      let attributes = ""
-      if (col.isPrimaryKey) attributes += " PK"
-      if (col.isForeignKey) attributes += " FK"
+    if (table.columns && Array.isArray(table.columns)) {
+      table.columns.forEach((col) => {
+        if (!col || !col.name) {
+          console.warn("⚠️ Skipping invalid column:", col)
+          return
+        }
 
-      mermaidCode += `    ${type} ${colName}${attributes}\n`
-    })
+        // Sanitize column name and type
+        const colName = col.name.replace(/[^a-zA-Z0-9_]/g, "_")
+        const type = (col.type || "unknown").replace(/[^a-zA-Z0-9_]/g, "_")
+
+        let attributes = ""
+        if (col.isPrimaryKey) attributes += " PK"
+        if (col.isForeignKey) attributes += " FK"
+
+        mermaidCode += `    ${type} ${colName}${attributes}\n`
+      })
+    }
+
     mermaidCode += `  }\n`
   })
 
   // Add relationships
-  schema.relationships.forEach((rel) => {
-    // Sanitize table names
-    const fromTable = rel.fromTable.replace(/[^a-zA-Z0-9_]/g, "_")
-    const toTable = rel.toTable.replace(/[^a-zA-Z0-9_]/g, "_")
-    const label = rel.fromColumn.replace(/[^a-zA-Z0-9_]/g, "_")
+  if (schema.relationships && Array.isArray(schema.relationships)) {
+    schema.relationships.forEach((rel) => {
+      if (!rel || !rel.fromTable || !rel.toTable || !rel.fromColumn) {
+        console.warn("⚠️ Skipping invalid relationship:", rel)
+        return
+      }
 
-    // Use zero-or-more (o{) for foreign key relationships
-    mermaidCode += `  ${toTable} ||--o{ ${fromTable} : "${label}"\n`
-  })
+      // Sanitize table names
+      const fromTable = rel.fromTable.replace(/[^a-zA-Z0-9_]/g, "_")
+      const toTable = rel.toTable.replace(/[^a-zA-Z0-9_]/g, "_")
+      const label = rel.fromColumn.replace(/[^a-zA-Z0-9_]/g, "_")
 
+      // Use zero-or-more (o{) for foreign key relationships
+      mermaidCode += `  ${toTable} ||--o{ ${fromTable} : "${label}"\n`
+    })
+  }
+
+  console.log("✅ Generated Mermaid ERD:", mermaidCode.substring(0, 200) + "...")
   return mermaidCode
 }
 
@@ -90,65 +123,127 @@ export function ERDiagram({ schema }: ERDiagramProps) {
 
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [mermaidCode, setMermaidCode] = useState("")
   const [isRendering, setIsRendering] = useState(false)
 
+  // Generate mermaid code and memoize it to prevent unnecessary regeneration
+  const mermaidCode = useMemo(() => generateMermaidERD(schema), [schema])
+
   useEffect(() => {
-    // Initialize Mermaid only once
+    // Initialize Mermaid with proper configuration
     try {
       mermaid.initialize({
         startOnLoad: false,
         theme: "dark",
         securityLevel: "loose",
+        logLevel: 'debug',
         er: {
           useMaxWidth: true,
+          layoutDirection: 'TB',
         },
       })
+      console.log("✅ Mermaid initialized successfully")
     } catch (error) {
-      console.error("Mermaid initialization error:", error)
+      console.error("❌ Mermaid initialization error:", error)
     }
   }, [])
+
+  // Re-initialize mermaid when dialog opens to ensure it's ready
+  useEffect(() => {
+    if (isOpen) {
+      console.log("🔄 Re-initializing Mermaid for dialog...")
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "dark",
+          securityLevel: "loose",
+          logLevel: 'debug',
+          er: {
+            useMaxWidth: true,
+            layoutDirection: 'TB',
+          },
+        })
+        console.log("✅ Mermaid re-initialized for dialog")
+      } catch (error) {
+        console.error("❌ Mermaid re-initialization error:", error)
+      }
+    }
+  }, [isOpen])
 
   useEffect(() => {
     console.log("🔍 useEffect triggered - isOpen:", isOpen, "hasContainer:", !!containerRef.current)
 
-    if (isOpen && containerRef.current) {
-      console.log("🔍 Generating Mermaid code for schema:", schema)
-      const code = generateMermaidERD(schema)
-      console.log("🔍 Generated Mermaid code length:", code.length)
-      console.log("🔍 Generated Mermaid code:", code)
-      setMermaidCode(code)
-      setIsRendering(true)
+    if (!isOpen) return
 
-      // Clear previous content
+    // Wait for container to be mounted in DOM
+    const waitForContainer = () => {
       if (containerRef.current) {
-        containerRef.current.innerHTML = '<div class="flex items-center justify-center py-12"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>'
-      }
+        console.log("✅ Container found, starting render...")
+        console.log("🔍 Generating Mermaid code for schema:", schema)
+        console.log("🔍 Generated Mermaid code length:", mermaidCode.length)
+        console.log("🔍 Generated Mermaid code:", mermaidCode)
+        setIsRendering(true)
 
-      // Render mermaid diagram
-      const renderDiagram = async () => {
-        try {
-          // Use timestamp to ensure unique ID
-          const id = `er-diagram-${Date.now()}`
-          const { svg } = await mermaid.render(id, code)
-          if (containerRef.current) {
-            containerRef.current.innerHTML = svg
+        // Render mermaid diagram
+        const renderDiagram = async () => {
+          try {
+            // Clear previous content and show loading spinner
+            if (containerRef.current) {
+              containerRef.current.innerHTML = '<div class="flex items-center justify-center py-12"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>'
+            }
+
+            console.log("🎨 Starting mermaid render...")
+            // Use timestamp to ensure unique ID
+            const id = `er-diagram-${Date.now()}`
+            console.log("📝 Rendering with ID:", id)
+            console.log("📝 Mermaid code to render:", mermaidCode.substring(0, 100) + "...")
+
+            // Remove any existing mermaid elements with same ID
+            const existingElement = document.getElementById(id)
+            if (existingElement) {
+              existingElement.remove()
+              console.log("🗑️ Removed existing mermaid element")
+            }
+
+            const { svg } = await mermaid.render(id, mermaidCode)
+            console.log("✅ Mermaid render successful, SVG length:", svg.length)
+
+            if (containerRef.current) {
+              // Clear and inject SVG
+              containerRef.current.innerHTML = ''
+              containerRef.current.innerHTML = svg
+              console.log("✅ SVG injected into container")
+              console.log("📊 Container innerHTML length:", containerRef.current.innerHTML.length)
+            } else {
+              console.warn("⚠️ Container ref is null after render")
+            }
+            setIsRendering(false)
+          } catch (error) {
+            console.error("❌ Mermaid rendering error:", error)
+            console.error("❌ Error details:", {
+              message: error instanceof Error ? error.message : 'Unknown error',
+              stack: error instanceof Error ? error.stack : undefined,
+              mermaidCodeLength: mermaidCode.length,
+              mermaidCodePreview: mermaidCode.substring(0, 200)
+            })
+            if (containerRef.current) {
+              containerRef.current.innerHTML = `<div class="text-destructive p-4"><p class="font-semibold mb-2">Failed to render diagram</p><p class="text-sm">${error instanceof Error ? error.message : 'Unknown error'}</p><pre class="mt-2 text-xs bg-muted/30 p-2 rounded overflow-x-auto">${mermaidCode}</pre></div>`
+            }
+            setIsRendering(false)
           }
-          setIsRendering(false)
-        } catch (error) {
-          console.error("Mermaid rendering error:", error)
-          console.log("Generated Mermaid code:", code)
-          if (containerRef.current) {
-            containerRef.current.innerHTML = `<div class="text-destructive p-4"><p class="font-semibold mb-2">Failed to render diagram</p><p class="text-sm">${error instanceof Error ? error.message : 'Unknown error'}</p></div>`
-          }
-          setIsRendering(false)
         }
-      }
 
-      // Small delay to ensure DOM is ready
-      setTimeout(renderDiagram, 100)
+        // Delay to ensure mermaid is ready
+        setTimeout(renderDiagram, 300)
+      } else {
+        console.log("⏳ Container not ready, waiting...")
+        // Retry after a short delay
+        setTimeout(waitForContainer, 50)
+      }
     }
-  }, [isOpen, schema])
+
+    // Start waiting for container
+    waitForContainer()
+  }, [isOpen, mermaidCode, schema])
 
   const handleExportSVG = () => {
     if (containerRef.current) {

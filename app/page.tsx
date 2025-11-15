@@ -2,6 +2,7 @@ import Header from "@/components/header"
 import HeroSection from "@/components/hero-section"
 import FeaturesSection from "@/components/features-section"
 import TransformationDemo from "@/components/transformation-demo"
+import PerformanceSection from "@/components/performance-section"
 import TrustedBySection from "@/components/trusted-by-section"
 import TestimonialsSection from "@/components/testimonials-section"
 import SecuritySection from "@/components/security-section"
@@ -16,6 +17,7 @@ export default function Home() {
       <HeroSection />
       <TransformationDemo />
       <FeaturesSection />
+      <PerformanceSection />
       <TrustedBySection />
       <TestimonialsSection />
       <SecuritySection />

@@ -3,6 +3,8 @@ import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
+// Validate environment variables on server startup
+import "@/lib/env"
 
 const geist = Geist({
   subsets: ["latin"],

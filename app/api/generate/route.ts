@@ -1,62 +1,17 @@
 import { NextResponse } from "next/server"
-import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@/lib/supabase/server"
-import { getActiveConnection, getConnectionPool } from "@/lib/connection-manager"
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
-async function getSchemaInfo(pool: any) {
-  try {
-    const client = await pool.connect()
-
-    // Get all tables
-    const tablesQuery = `
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-      ORDER BY table_name;
-    `
-    const tables = await client.query(tablesQuery)
-
-    // Get columns for each table
-    const schema: any = {}
-    for (const table of tables.rows) {
-      const tableName = table.table_name
-      const columnsQuery = `
-        SELECT
-          column_name,
-          data_type,
-          is_nullable
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = $1
-        ORDER BY ordinal_position;
-      `
-      const columns = await client.query(columnsQuery, [tableName])
-      schema[tableName] = columns.rows
-    }
-
-    client.release()
-    return schema
-  } catch (error) {
-    console.error("Schema introspection error:", error)
-    return {}
-  }
-}
-
-function formatSchemaForPrompt(schema: any): string {
-  let formatted = ""
-  for (const [tableName, columns] of Object.entries(schema as Record<string, any[]>)) {
-    formatted += `\nTable: ${tableName}\n`
-    formatted += `Columns:\n`
-    for (const col of columns) {
-      formatted += `  - ${col.column_name} (${col.data_type})${col.is_nullable === 'NO' ? ' NOT NULL' : ''}\n`
-    }
-  }
-  return formatted
-}
+import { getActiveConnection } from "@/lib/connection-manager"
+import { createDatabaseAdapter, DatabaseType } from "@/lib/database"
+import {
+  detectPromptInjection,
+  getSecurityErrorMessage,
+  logSecurityIncident,
+} from "@/lib/security/prompt-injection-detector"
+import {
+  checkQueryGenerationLimit,
+  getRateLimitHeaders,
+  logRateLimitEvent,
+} from "@/lib/ratelimit/rate-limiter"
 
 export async function POST(request: Request) {
   try {
@@ -66,6 +21,29 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Query is required" },
         { status: 400 }
+      )
+    }
+
+    // SECURITY: Detect prompt injection attempts
+    const injectionDetection = detectPromptInjection(query)
+
+    if (!injectionDetection.isSafe) {
+      const errorMessage = getSecurityErrorMessage(injectionDetection)
+
+      // Log security incident (will include user ID after auth check)
+      console.error('[Security] Prompt injection blocked:', {
+        riskLevel: injectionDetection.riskLevel,
+        threats: injectionDetection.threats,
+        queryPreview: query.substring(0, 100),
+      })
+
+      return NextResponse.json(
+        {
+          error: errorMessage,
+          securityThreat: true,
+          riskLevel: injectionDetection.riskLevel,
+        },
+        { status: 403 }  // 403 Forbidden
       )
     }
 
@@ -88,6 +66,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // RATE LIMITING: Check query generation limit (LLM API calls)
+    const rateLimitResult = await checkQueryGenerationLimit(user.id)
+    logRateLimitEvent(user.id, "query_generation", rateLimitResult)
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: rateLimitResult.message || "Rate limit exceeded",
+          retryAfter: rateLimitResult.retryAfter,
+        },
+        {
+          status: 429, // Too Many Requests
+          headers: getRateLimitHeaders(rateLimitResult),
+        }
+      )
+    }
+
+    // Log security incident with user context
+    if (!injectionDetection.isSafe) {
+      logSecurityIncident(user.id, query, injectionDetection)
+    }
+
     // Get active connection
     const activeConnection = await getActiveConnection(user.id)
 
@@ -98,78 +98,61 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get connection pool
-    const pool = await getConnectionPool(user.id, activeConnection.id)
-
-    if (!pool) {
-      return NextResponse.json(
-        { error: "Failed to establish database connection" },
-        { status: 500 }
-      )
-    }
-
-    // Get database schema
-    const schema = await getSchemaInfo(pool)
-    const schemaText = formatSchemaForPrompt(schema)
-
-    // Create prompt for Claude
-    const prompt = `You are an expert SQL query generator. Convert the natural language query to PostgreSQL SQL.
-
-DATABASE SCHEMA:
-${schemaText}
-
-RULES:
-- Only generate SELECT queries (read-only)
-- Use proper PostgreSQL syntax
-- Include LIMIT clause for safety (max 100 rows unless specified)
-- Return ONLY the SQL query, no explanations or markdown
-- Do not include semicolon at the end
-
-USER QUERY:
-"${query}"
-
-SQL Query:`
-
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-5-20250929",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+    // Create database adapter
+    const adapter = createDatabaseAdapter({
+      id: activeConnection.id,
+      name: activeConnection.name,
+      db_type: activeConnection.db_type as DatabaseType,
+      host: activeConnection.host,
+      port: activeConnection.port,
+      database: activeConnection.database,
+      username: activeConnection.username,
+      password_encrypted: activeConnection.password_encrypted,
+      password: activeConnection.password, // Legacy fallback
     })
 
-    // Extract SQL from response
-    let sql = ""
-    for (const block of message.content) {
-      if (block.type === "text") {
-        sql = block.text.trim()
-        break
-      }
-    }
+    try {
+      // Initialize adapter pool
+      await adapter.createPool()
 
-    // Clean up the SQL
-    sql = sql.replace(/```sql\n?/g, "").replace(/```\n?/g, "").trim()
+      // Get database schema using adapter
+      const schema = await adapter.getSchema()
 
-    // Remove trailing semicolon if present
-    if (sql.endsWith(";")) {
-      sql = sql.slice(0, -1)
-    }
+      // Format schema for LLM prompt
+      const promptContext = adapter.formatSchemaForPrompt(schema)
 
-    // Basic validation - ensure it's a SELECT query
-    if (!sql.toLowerCase().startsWith("select")) {
+      // Generate SQL with automatic retry on validation failures
+      const { generateSQLWithRetry } = await import('@/lib/llm/sql-generator')
+
+      const result = await generateSQLWithRetry({
+        query,
+        schema,
+        schemaText: promptContext.schemaText,
+        dbType: activeConnection.db_type,
+        maxRetries: 3,
+      })
+
       return NextResponse.json(
-        { error: "Only SELECT queries are allowed for security" },
+        {
+          sql: result.sql,
+          confidence: result.confidence,
+          attempts: result.attempts,
+          warnings: result.validation.warnings,
+        },
+        {
+          headers: getRateLimitHeaders(rateLimitResult),
+        }
+      )
+    } catch (error: any) {
+      // All retries failed
+      return NextResponse.json(
+        { error: `Failed to generate valid SQL: ${error.message}` },
         { status: 400 }
       )
+    } finally {
+      // Clean up adapter pool
+      await adapter.closePool()
     }
-
-    return NextResponse.json({
-      sql,
-      confidence: 0.95,
-    })
   } catch (error: any) {
     console.error("Generate API error:", error)
     return NextResponse.json(

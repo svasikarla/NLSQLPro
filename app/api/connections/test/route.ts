@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { testConnection, ConnectionConfig } from '@/lib/connection-manager'
+import {
+  checkConnectionTestLimit,
+  getRateLimitHeaders,
+  logRateLimitEvent,
+} from '@/lib/ratelimit/rate-limiter'
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,6 +19,23 @@ export async function POST(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // RATE LIMITING: Check connection test limit
+    const rateLimitResult = await checkConnectionTestLimit(user.id)
+    logRateLimitEvent(user.id, "connection_test", rateLimitResult)
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: rateLimitResult.message || "Rate limit exceeded for connection testing",
+          retryAfter: rateLimitResult.retryAfter,
+        },
+        {
+          status: 429, // Too Many Requests
+          headers: getRateLimitHeaders(rateLimitResult),
+        }
+      )
     }
 
     // Parse request body
@@ -41,10 +63,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    return NextResponse.json({
-      success: true,
-      message: result.message,
-    })
+    return NextResponse.json(
+      {
+        success: true,
+        message: result.message,
+      },
+      {
+        headers: getRateLimitHeaders(rateLimitResult),
+      }
+    )
   } catch (error) {
     console.error('Error testing connection:', error)
     return NextResponse.json(

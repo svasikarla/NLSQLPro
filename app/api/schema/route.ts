@@ -1,6 +1,17 @@
 import { NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { getActiveConnection, getConnectionPool } from "@/lib/connection-manager"
+import {
+  getCachedSchema,
+  setCachedSchema,
+  deleteCachedSchema,
+} from "@/lib/cache/schema-cache"
+import {
+  checkSchemaIntrospectionLimit,
+  getRateLimitHeaders,
+  logRateLimitEvent,
+} from "@/lib/ratelimit/rate-limiter"
 
 interface ColumnInfo {
   name: string
@@ -29,7 +40,7 @@ interface SchemaInfo {
   }[]
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
 
@@ -51,6 +62,43 @@ export async function GET() {
         { error: "No active database connection. Please activate a connection in Settings." },
         { status: 400 }
       )
+    }
+
+    // Check if force refresh is requested
+    const { searchParams } = new URL(request.url)
+    const forceRefresh = searchParams.get('refresh') === 'true'
+
+    // RATE LIMITING: Only apply rate limit for force refresh (expensive operation)
+    let rateLimitResult = null
+    if (forceRefresh) {
+      rateLimitResult = await checkSchemaIntrospectionLimit(user.id)
+      logRateLimitEvent(user.id, "schema_introspection", rateLimitResult)
+
+      if (!rateLimitResult.success) {
+        return NextResponse.json(
+          {
+            error: rateLimitResult.message || "Rate limit exceeded for schema refresh",
+            retryAfter: rateLimitResult.retryAfter,
+          },
+          {
+            status: 429, // Too Many Requests
+            headers: getRateLimitHeaders(rateLimitResult),
+          }
+        )
+      }
+    }
+
+    // Try to get cached schema (unless force refresh)
+    if (!forceRefresh) {
+      const cachedSchema = await getCachedSchema(activeConnection.id)
+      if (cachedSchema) {
+        console.log('[Schema API] Returning cached schema')
+        return NextResponse.json(cachedSchema)
+      }
+      console.log('[Schema API] Cache miss - fetching fresh schema')
+    } else {
+      console.log('[Schema API] Force refresh requested - clearing cache')
+      await deleteCachedSchema(activeConnection.id)
     }
 
     // Get connection pool
@@ -184,7 +232,17 @@ export async function GET() {
       }
 
       client.release()
-      return NextResponse.json(schemaInfo)
+
+      // Save to cache for future requests
+      await setCachedSchema(activeConnection.id, schemaInfo)
+      console.log('[Schema API] Schema cached successfully')
+
+      return NextResponse.json(
+        schemaInfo,
+        rateLimitResult
+          ? { headers: getRateLimitHeaders(rateLimitResult) }
+          : undefined
+      )
     } catch (error) {
       client.release()
       throw error

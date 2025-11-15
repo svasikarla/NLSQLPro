@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { getActiveConnection, getConnectionPool } from "@/lib/connection-manager"
+import { getActiveConnection } from "@/lib/connection-manager"
+import { makeSafeQuery } from "@/lib/security/query-safety"
+import { createDatabaseAdapter, DatabaseType } from "@/lib/database"
+import {
+  checkQueryExecutionLimit,
+  getRateLimitHeaders,
+  logRateLimitEvent,
+} from "@/lib/ratelimit/rate-limiter"
 
 export async function POST(request: Request) {
   try {
@@ -25,6 +32,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // RATE LIMITING: Check query execution limit
+    const rateLimitResult = await checkQueryExecutionLimit(user.id)
+    logRateLimitEvent(user.id, "query_execution", rateLimitResult)
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: rateLimitResult.message || "Rate limit exceeded",
+          retryAfter: rateLimitResult.retryAfter,
+        },
+        {
+          status: 429, // Too Many Requests
+          headers: getRateLimitHeaders(rateLimitResult),
+        }
+      )
+    }
+
     // Get active connection
     const activeConnection = await getActiveConnection(user.id)
 
@@ -35,67 +59,74 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get connection pool
-    const pool = await getConnectionPool(user.id, activeConnection.id)
+    // Create database adapter
+    const adapter = createDatabaseAdapter({
+      id: activeConnection.id,
+      name: activeConnection.name,
+      db_type: activeConnection.db_type as DatabaseType,
+      host: activeConnection.host,
+      port: activeConnection.port,
+      database: activeConnection.database,
+      username: activeConnection.username,
+      password_encrypted: activeConnection.password_encrypted,
+      password: activeConnection.password, // Legacy fallback
+    })
 
-    if (!pool) {
-      return NextResponse.json(
-        { error: "Failed to establish database connection" },
-        { status: 500 }
-      )
-    }
+    try {
+      // Initialize adapter pool
+      await adapter.createPool()
 
-    // Security check - only allow SELECT queries
-    const trimmedSQL = sql.trim().toLowerCase()
-    if (!trimmedSQL.startsWith("select")) {
-      return NextResponse.json(
-        { error: "Only SELECT queries are allowed for security" },
-        { status: 400 }
-      )
-    }
-
-    // Additional security checks
-    const dangerousKeywords = [
-      "drop",
-      "delete",
-      "truncate",
-      "insert",
-      "update",
-      "alter",
-      "create",
-      "grant",
-      "revoke",
-    ]
-
-    for (const keyword of dangerousKeywords) {
-      if (trimmedSQL.includes(keyword)) {
+      // Apply comprehensive security checks and safety measures
+      let safeQuery
+      try {
+        safeQuery = makeSafeQuery(sql, activeConnection.db_type, {
+          maxRows: 1000,      // Limit to 1000 rows
+          timeoutSeconds: 30, // 30 second timeout
+        })
+      } catch (securityError: any) {
         return NextResponse.json(
-          { error: `Dangerous keyword '${keyword}' detected. Only SELECT queries are allowed.` },
+          { error: securityError.message },
           { status: 400 }
         )
       }
-    }
 
-    // Execute the query with timeout
-    const client = await pool.connect()
+      // Log warnings if any
+      if (safeQuery.validation.warnings.length > 0) {
+        console.warn('Query warnings:', safeQuery.validation.warnings)
+      }
 
-    try {
-      // Set statement timeout to 30 seconds
-      await client.query("SET statement_timeout = '30s'")
+      // Execute query using adapter
+      const result = await adapter.executeWithTimeout(
+        safeQuery.sql,
+        safeQuery.validation.recommendedTimeout || 30
+      )
 
-      const result = await client.query(sql)
-
-      return NextResponse.json({
-        results: result.rows,
-        rowCount: result.rowCount || 0,
-      })
+      return NextResponse.json(
+        {
+          results: result.rows,
+          rowCount: result.rowCount || 0,
+          executionTime: result.executionTime,
+          // Include safety metadata for transparency
+          safety: {
+            limitApplied: safeQuery.sql !== sql,
+            maxRows: 1000,
+            timeoutSeconds: safeQuery.validation.recommendedTimeout,
+            complexity: safeQuery.validation.complexity,
+            warnings: safeQuery.validation.warnings,
+          }
+        },
+        {
+          headers: getRateLimitHeaders(rateLimitResult),
+        }
+      )
     } finally {
-      client.release()
+      // Clean up adapter pool
+      await adapter.closePool()
     }
   } catch (error: any) {
     console.error("Execute API error:", error)
 
-    // Parse PostgreSQL errors for better user messages
+    // Use adapter error mapping if available
     let errorMessage = "Failed to execute query"
 
     if (error.code) {

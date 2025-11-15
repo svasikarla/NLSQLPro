@@ -4,24 +4,24 @@ import { Shield, Lock, Eye, Key } from "lucide-react"
 
 const securityFeatures = [
   {
+    icon: Shield,
+    title: "Prompt Injection Defense",
+    description: "Advanced detection blocks 30+ attack patterns including jailbreaks, SQL injection, and LLM manipulation attempts",
+  },
+  {
     icon: Lock,
-    title: "Encrypted Connections",
-    description: "Database credentials stored securely in Supabase with encrypted connections",
+    title: "AES-256 Encryption",
+    description: "Database credentials encrypted at rest with industry-standard AES-256-GCM. Environment-based key management.",
   },
   {
     icon: Eye,
-    title: "Row-Level Security",
-    description: "Supabase RLS ensures users can only access their own database connections",
+    title: "Multi-Layer Validation",
+    description: "SQL syntax validation, schema verification, and query complexity analysis. Read-only mode enforced.",
   },
   {
     icon: Key,
-    title: "Email Authentication",
-    description: "Secure user authentication with email/password via Supabase Auth",
-  },
-  {
-    icon: Shield,
-    title: "Read-Only Queries",
-    description: "All SQL queries are validated to prevent destructive operations (SELECT only)",
+    title: "Secure Authentication",
+    description: "Supabase Auth with Row-Level Security. Users can only access their own connections and queries.",
   },
 ]
 
@@ -32,9 +32,9 @@ export default function SecuritySection() {
         <div className="grid md:grid-cols-2 gap-12 items-center">
           {/* Left - Heading */}
           <div>
-            <h2 className="text-4xl font-bold mb-6">Security-First Design</h2>
+            <h2 className="text-4xl font-bold mb-6">Enterprise-Grade Security</h2>
             <p className="text-lg text-muted-foreground mb-8">
-              NLSQL Pro is built with security at its core. Your database credentials and queries are protected with industry-standard practices.
+              Production-hardened with comprehensive security measures. Protects against prompt injection, SQL injection, and unauthorized access with multi-layer defense systems.
             </p>
 
             <div className="space-y-4">
@@ -55,13 +55,15 @@ export default function SecuritySection() {
 
           {/* Right - Security Features */}
           <div className="bg-background rounded-lg p-8 border border-border">
-            <h3 className="font-bold text-lg mb-6">Built on Trusted Infrastructure</h3>
+            <h3 className="font-bold text-lg mb-6">Production Security Features</h3>
             <div className="space-y-4">
               {[
-                { feature: "Supabase Platform", desc: "Enterprise-grade PostgreSQL hosting and auth" },
-                { feature: "Connection Pooling", desc: "Efficient database connection management" },
-                { feature: "Query Validation", desc: "SQL injection prevention and syntax checking" },
-                { feature: "Isolated User Data", desc: "Each user's connections are completely isolated" },
+                { feature: "Prompt Injection Blocking", desc: "Real-time detection with 4-level risk classification" },
+                { feature: "Schema Fingerprinting", desc: "MD5 hash-based change detection and cache invalidation" },
+                { feature: "Environment Validation", desc: "Startup checks prevent configuration errors" },
+                { feature: "Connection Pooling", desc: "Secure, efficient multi-database connection management" },
+                { feature: "Comprehensive Logging", desc: "Security incident tracking for audit compliance" },
+                { feature: "Row-Level Security", desc: "Supabase RLS isolates user data completely" },
               ].map((item, idx) => (
                 <div key={idx} className="flex items-start gap-3 pb-4 border-b border-border last:border-0">
                   <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0" />

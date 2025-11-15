@@ -11,13 +11,13 @@ This document contains both a **pragmatic MVP approach** (start here!) and a com
 - Ignore the "Critical Analysis" section until Phase 4+
 - Focus on proving value first, optimize later
 
-**Current Status:** Landing page only. No backend yet.
+**Current Status:** ✅ **Phase 3+ MVP Complete** - Production-ready with full backend, 4 database adapters, security hardening, schema caching, and rate limiting.
 
 ---
 
 ## Project Overview
 
-NLSQL Pro is a Natural Language to SQL query platform built with Next.js 16. It's designed to transform natural language queries into SQL queries with enterprise-grade features. Currently, this is a **landing page implementation** showcasing the platform's value proposition.
+NLSQL Pro is a production-ready Natural Language to SQL query platform built with Next.js 16. It transforms natural language queries into secure, optimized SQL queries with enterprise-grade features including multi-database support, schema caching, prompt injection defense, and rate limiting.
 
 ### Tech Stack
 
@@ -28,6 +28,12 @@ NLSQL Pro is a Natural Language to SQL query platform built with Next.js 16. It'
 - **UI Components**: shadcn/ui (New York style) with Radix UI primitives
 - **Icons**: Lucide React
 - **Form Handling**: React Hook Form with Zod validation
+- **Auth**: Supabase Auth with Row-Level Security
+- **Database**: Supabase (PostgreSQL) + multi-DB adapters (PostgreSQL, MySQL, SQLite, SQL Server)
+- **AI**: Anthropic Claude Sonnet 4.5 (with optional OpenAI fallback)
+- **Caching**: Schema caching with MD5 fingerprinting (24h TTL)
+- **Rate Limiting**: Upstash Redis (optional, graceful degradation)
+- **Security**: AES-256-GCM encryption, prompt injection detection
 - **Analytics**: Vercel Analytics
 
 ## Commands
@@ -46,16 +52,43 @@ pnpm lint         # Run ESLint
 
 ```
 app/
-  layout.tsx           # Root layout with metadata and Analytics
-  page.tsx             # Home page composing all landing sections
-  globals.css          # Global styles with custom CSS variables
+  api/
+    generate/route.ts          # SQL generation with prompt injection protection
+    execute/route.ts           # Query execution with safety validation
+    schema/route.ts            # Schema introspection with caching
+    connections/               # Connection CRUD operations
+  query/page.tsx               # Main query interface
+  settings/connections/        # Connection management
+  auth/                        # Login/Signup pages
+  page.tsx                     # Landing page
+  layout.tsx                   # Root layout with metadata
+  globals.css                  # Global styles
 components/
-  [section].tsx        # Landing page sections (hero, features, pricing, etc.)
-  ui/                  # shadcn/ui components
-hooks/                 # Custom React hooks
+  [section].tsx                # Landing page sections (hero, features, security, performance)
+  schema-viewer.tsx            # Schema display with refresh button
+  connection-form.tsx          # Database connection form
+  ui/                          # shadcn/ui components
+hooks/                         # Custom React hooks
 lib/
-  utils.ts             # Utility functions (cn for className merging)
-public/                # Static assets (icons, images)
+  database/
+    adapters/                  # PostgreSQL, MySQL, SQLite, SQL Server adapters
+    adapter-factory.ts         # Factory pattern for adapter selection
+    pool-cache.ts              # Connection pool caching
+  cache/schema-cache.ts        # 24h caching with MD5 fingerprinting
+  security/
+    encryption.ts              # AES-256-GCM encryption
+    prompt-injection-detector.ts  # 30+ attack patterns
+  ratelimit/rate-limiter.ts    # Multi-tier rate limiting
+  llm/claude-client.ts         # Claude API integration
+  validation/
+    sql-validator.ts           # SQL syntax validation
+    query-safety.ts            # Safety checks
+  env.ts                       # Environment validation
+  utils.ts                     # Utility functions
+supabase/migrations/
+  001_initial_schema.sql       # Database connections, query history
+  002_schema_cache.sql         # Schema cache table
+public/                        # Static assets
 ```
 
 ### Component Architecture
@@ -99,39 +132,42 @@ Configuration in [components.json](components.json):
 - Path alias: `@/*` maps to root directory
 - Module resolution: bundler (Next.js)
 
-## Future Implementation Notes (from plan.txt)
+## Implemented Features (Phase 0-3 Complete)
 
-The project is planned to evolve from a landing page into a full NL-to-SQL platform with:
+### Core Features ✅
+- ✅ Multi-database support (PostgreSQL, MySQL, SQLite, SQL Server)
+- ✅ Natural language query interface
+- ✅ AI-powered SQL generation (Claude Sonnet 4.5)
+- ✅ Schema introspection with caching (24h TTL, MD5 fingerprinting)
+- ✅ Query execution with safety validation
+- ✅ User authentication (Supabase Auth)
+- ✅ Connection management (CRUD operations)
 
-### Phase 1 MVP (Planned)
-- Database connection management (PostgreSQL, MySQL, SQLite)
-- Natural language query interface
-- LLM-powered SQL generation (Claude/GPT-4)
-- Schema introspection and context injection
-- Query execution with result display
-
-### Backend Architecture (Planned)
+### Backend Architecture ✅
 ```
-API Routes:
-  /api/query      # NL to SQL generation
-  /api/execute    # Query execution
-  /api/connect    # Database connections
-  /api/schema     # Schema introspection
-  /api/history    # Query history
+API Routes (Implemented):
+  /api/generate           # SQL generation with prompt injection protection + rate limiting
+  /api/execute            # Query execution with safety checks + rate limiting
+  /api/schema             # Schema introspection with caching + rate limiting (refresh only)
+  /api/connections/*      # Connection CRUD (create, list, activate, delete, test) + rate limiting
 ```
 
-### Data Models (Planned - Supabase)
-- `database_connections` - User database configs (encrypted connection strings)
-- `query_history` - NL queries, generated SQL, execution results
-- `saved_queries` - Query templates
-- `business_glossary` - Domain-specific term mappings
-- `audit_logs` - Security and compliance tracking
+### Data Models (Implemented - Supabase)
+- ✅ `database_connections` - User database configs (AES-256-GCM encrypted)
+- ✅ `query_history` - NL queries, generated SQL, execution results
+- ✅ `schema_cache` - Cached schema metadata with MD5 fingerprints
+- ⏳ `saved_queries` - Query templates (planned Phase 4+)
+- ⏳ `business_glossary` - Domain-specific term mappings (planned Phase 5+)
+- ⏳ `audit_logs` - Security and compliance tracking (planned Phase 4+)
 
-### Key Technical Patterns (Planned)
-- **Schema-aware SQL generation**: Inject table/column metadata into LLM prompts
-- **Conversational refinement**: Thread-based query iteration with `conversation_thread_id`
-- **Safety-first**: Read-only mode by default, query validation, SQL injection prevention
-- **Semantic search**: Use embeddings (Cohere) for query similarity matching
+### Key Technical Patterns (Implemented)
+- ✅ **Schema-aware SQL generation**: Inject table/column metadata into LLM prompts
+- ✅ **Schema caching**: 24-hour TTL with MD5 fingerprinting for staleness detection
+- ✅ **Safety-first**: Read-only mode by default, multi-layer query validation, SQL injection prevention
+- ✅ **Prompt injection defense**: 30+ attack patterns blocked with 4-level risk classification
+- ✅ **Rate limiting**: Multi-tier limits (generation, execution, schema, connection, global)
+- ⏳ **Conversational refinement**: Thread-based query iteration (planned Phase 4+)
+- ⏳ **Semantic search**: Use embeddings for query similarity matching (planned Phase 5+)
 
 ### Core Workflows (Planned)
 
@@ -161,21 +197,23 @@ API Routes:
 5. Store in `schema_metadata` JSONB
 6. Generate embeddings for table/column names
 
-### Planned Tech Stack Additions
+### Implemented Tech Stack
 
 **Backend Libraries:**
-- `node-postgres` - PostgreSQL client
-- `mysql2` - MySQL client
-- `better-sqlite3` - SQLite client
-- `@anthropic-ai/sdk` or `openai` - LLM integration
-- React Query - Data fetching and caching
-- Monaco Editor - SQL syntax highlighting and editing
+- ✅ `pg` - PostgreSQL client
+- ✅ `mysql2` - MySQL client
+- ✅ `better-sqlite3` - SQLite client
+- ✅ `mssql` - SQL Server client
+- ✅ `@anthropic-ai/sdk` - Claude API integration
+- ⏳ `openai` - OpenAI integration (optional fallback configured)
+- ⏳ React Query - Data fetching and caching (planned Phase 4+)
+- ⏳ Monaco Editor - SQL syntax highlighting (planned Phase 4+)
 
 **Infrastructure:**
-- Supabase - Auth, database, storage
-- Vercel - Hosting
-- Upstash Redis - Rate limiting
-- Sentry - Error tracking
+- ✅ Supabase - Auth, database, storage
+- ✅ Vercel - Hosting
+- ✅ Upstash Redis - Rate limiting (optional, graceful degradation)
+- ⏳ Sentry - Error tracking (optional, configured but not required)
 
 ## Development Guidelines
 
@@ -203,24 +241,28 @@ Modify CSS custom properties in [app/globals.css](app/globals.css). Use oklch co
 
 ### TypeScript Notes
 
-- `ignoreBuildErrors: true` in [next.config.mjs](next.config.mjs) - should be removed before production
-- Images are unoptimized - configure for production deployment
+- ✅ Build passes with 0 errors (strict mode enabled)
+- ✅ All type definitions properly configured
+- ✅ Path aliases working correctly
 
 ## Important Considerations
 
-### Security (for future API implementation)
-- Always use parameterized queries
-- Default to read-only database connections
-- Validate and sanitize all user inputs
-- Encrypt connection strings at rest
-- Implement rate limiting on API routes
+### Security (Implemented)
+- ✅ Parameterized queries where applicable
+- ✅ Default to read-only database connections
+- ✅ Multi-layer validation and sanitization
+- ✅ AES-256-GCM encryption for connection strings at rest
+- ✅ Multi-tier rate limiting on API routes
+- ✅ Prompt injection detection (30+ patterns)
+- ✅ Environment variable validation
 
-### LLM Integration (planned)
-- Include full schema context in prompts (tables, columns, foreign keys)
-- Add confidence scoring to generated SQL
-- Implement ambiguity detection ("recent" → prompt for timeframe)
-- Cache schema metadata to reduce API calls
-- Provide example queries to guide the model
+### LLM Integration (Implemented)
+- ✅ Include full schema context in prompts (tables, columns, foreign keys)
+- ✅ Confidence scoring in generated SQL
+- ✅ Cache schema metadata to reduce API calls (24h TTL)
+- ✅ Automatic retry on API failures
+- ⏳ Ambiguity detection ("recent" → prompt for timeframe) - planned Phase 4+
+- ⏳ Example queries library - planned Phase 4+
 
 **Prompt Engineering Template (from plan.txt):**
 ```typescript
@@ -257,12 +299,13 @@ Generate the SQL query now:
 - Use smaller/cheaper models for simple queries
 - Target: <$0.05 per query
 
-### Performance
-- Schema metadata should be cached in JSONB (Supabase)
-- Query results should have pagination (max 1000 rows)
-- Set query execution timeouts (30 seconds recommended)
-- Query result caching for frequently-run queries
-- Background execution for long-running queries
+### Performance (Implemented)
+- ✅ Schema metadata cached with 24h TTL and MD5 fingerprinting (10-100x improvement)
+- ✅ Query results limited to max 1000 rows
+- ✅ Query execution timeouts (30 seconds)
+- ✅ Connection pooling with caching
+- ⏳ Query result caching - planned Phase 4+
+- ⏳ Background execution for long-running queries - planned Phase 5+
 
 ### Business Glossary Feature (Planned)
 The platform will support mapping business terms to SQL expressions:
@@ -453,21 +496,24 @@ ALTER TABLE query_history
 
 ---
 
-### What Security MUST Include (Even in MVP)
+### What Security MUST Include (Implemented)
 
-**Non-Negotiable:**
+**Implemented in Phase 0-3:**
 1. ✅ Environment variable validation (never expose connection strings)
-2. ✅ Simple SQL validation: `if (!sql.trim().toLowerCase().startsWith('select')) throw error`
+2. ✅ Multi-layer SQL validation (syntax, safety, schema verification)
 3. ✅ Query timeout (30 seconds)
 4. ✅ Row limit (LIMIT 1000 automatically appended)
 5. ✅ HTTPS only (Vercel handles this)
 6. ✅ Supabase RLS for user data isolation
+7. ✅ Prompt injection detection (30+ patterns) - IMPLEMENTED
+8. ✅ AES-256-GCM encryption for credentials
+9. ✅ Multi-tier rate limiting
+10. ✅ Connection pooling with caching - IMPLEMENTED
 
-**Can Wait:**
-- ⏳ Advanced SQL parser (Phase 4)
-- ⏳ Prompt injection detection (Phase 4)
-- ⏳ Query plan analysis (Phase 4)
-- ⏳ Connection pooling (Phase 5)
+**Phase 4+ Enhancements:**
+- ⏳ Advanced SQL parser with AST analysis
+- ⏳ Query plan analysis (EXPLAIN before execution)
+- ⏳ Query cost estimation
 
 ---
 

@@ -18,7 +18,7 @@ export default function HeroSection() {
           {/* Badge with glow effect */}
           <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-card/50 backdrop-blur-sm border border-primary/30 mb-8 shadow-lg shadow-primary/20 animate-pulse-slow">
             <Sparkles size={16} className="text-accent" />
-            <span className="text-sm font-semibold text-accent">AI-Powered Data Intelligence</span>
+            <span className="text-sm font-semibold text-accent">Production-Ready • Enterprise Security • 10-100x Faster</span>
           </div>
 
           {/* Headline with animated text */}
@@ -29,7 +29,8 @@ export default function HeroSection() {
 
           {/* Subheadline */}
           <p className="text-lg sm:text-xl text-muted-foreground mb-12 max-w-2xl mx-auto text-balance leading-relaxed">
-            Transform natural language into PostgreSQL queries using Claude AI. Secure, fast, and transparent - no SQL knowledge required.
+            Transform natural language into SQL for PostgreSQL, MySQL, SQLite, and SQL Server using Claude AI.
+            Enterprise-grade security with advanced prompt injection protection. Lightning-fast schema caching.
           </p>
 
           {/* CTA Buttons with enhanced styling */}

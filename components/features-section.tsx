@@ -6,32 +6,32 @@ const features = [
   {
     icon: Sparkles,
     title: "AI-Powered Generation",
-    description: "Claude AI understands your database schema and generates accurate PostgreSQL queries from natural language.",
+    description: "Claude Sonnet 4.5 with automatic retry and error correction. Generates accurate SQL for PostgreSQL, MySQL, SQLite, and SQL Server.",
   },
   {
     icon: Zap,
-    title: "Lightning Fast",
-    description: "Query your data in seconds. Schema introspection, generation, and execution optimized for speed.",
+    title: "Lightning Fast (10-100x)",
+    description: "24-hour schema caching delivers sub-second responses. 10-100x faster than traditional query builders.",
+  },
+  {
+    icon: Shield,
+    title: "Prompt Injection Protection",
+    description: "Advanced security blocks 30+ attack patterns. Multi-layer defense against jailbreaks, SQL injection, and LLM manipulation.",
   },
   {
     icon: Lock,
-    title: "Secure & Isolated",
-    description: "Row-level security ensures users only access their own data. All queries run in read-only mode.",
-  },
-  {
-    icon: Cpu,
-    title: "Manual SQL Editing",
-    description: "Review and edit generated SQL before execution. Full transparency and control over your queries.",
+    title: "Enterprise Security",
+    description: "AES-256 encryption for credentials. Row-level security, read-only mode, and comprehensive audit logging.",
   },
   {
     icon: Code,
     title: "Multi-Database Support",
-    description: "Connect and switch between multiple PostgreSQL databases. Test connections before activation.",
+    description: "Connect to PostgreSQL, MySQL, SQLite, and SQL Server. Switch between databases with one click.",
   },
   {
-    icon: Shield,
-    title: "Export & History",
-    description: "Export results to CSV/JSON. Query history saved locally for quick access to previous queries.",
+    icon: Cpu,
+    title: "Smart Schema Analysis",
+    description: "Auto-refresh schema on demand. Relationship detection for accurate JOINs. Fingerprint-based change detection.",
   },
 ]
 

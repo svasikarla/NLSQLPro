@@ -1,5 +1,6 @@
 import { Pool, PoolClient } from 'pg'
 import { createClient } from '@/lib/supabase/server'
+import { encrypt, decrypt } from '@/lib/security/encryption'
 
 // Type definitions
 export interface DatabaseConnection {
@@ -11,7 +12,9 @@ export interface DatabaseConnection {
   port: number
   database: string
   username: string
-  password: string
+  password: string // Legacy field (will be removed)
+  password_encrypted?: string // New encrypted password field
+  encrypted_at?: string
   is_active: boolean
   created_at: string
   updated_at: string
@@ -86,6 +89,15 @@ export async function createConnection(
     return { success: false, error: validation.error }
   }
 
+  // Encrypt the password before storing
+  let encryptedPassword: string
+  try {
+    encryptedPassword = encrypt(config.password)
+  } catch (error) {
+    console.error('Error encrypting password:', error)
+    return { success: false, error: 'Failed to encrypt password' }
+  }
+
   const { data, error } = await supabase
     .from('user_connections')
     .insert({
@@ -96,7 +108,8 @@ export async function createConnection(
       port: config.port,
       database: config.database,
       username: config.username,
-      password: config.password,
+      password_encrypted: encryptedPassword,
+      encrypted_at: new Date().toISOString(),
       is_active: false, // New connections are not active by default
     })
     .select()
@@ -245,13 +258,32 @@ export async function getConnectionPool(
     return null
   }
 
+  // Decrypt the password
+  let password: string
+  try {
+    // Use encrypted password if available, fallback to legacy plain text
+    if (dbConnection.password_encrypted) {
+      password = decrypt(dbConnection.password_encrypted)
+    } else if (dbConnection.password) {
+      // Legacy plain text password (will be migrated)
+      password = dbConnection.password
+      console.warn('Using legacy plain text password. Please re-save this connection to encrypt it.')
+    } else {
+      console.error('No password found for connection')
+      return null
+    }
+  } catch (error) {
+    console.error('Error decrypting password:', error)
+    return null
+  }
+
   // Create new pool
   const pool = new Pool({
     host: dbConnection.host,
     port: dbConnection.port,
     database: dbConnection.database,
     user: dbConnection.username,
-    password: dbConnection.password,
+    password: password,
     max: 10, // Max 10 connections per pool
     idleTimeoutMillis: 30000, // 30 seconds
     connectionTimeoutMillis: 5000, // 5 seconds

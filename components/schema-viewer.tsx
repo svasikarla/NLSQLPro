@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ChevronDown, Database, Key, Link as LinkIcon, Loader2 } from "lucide-react"
+import { ChevronDown, Database, Key, Link as LinkIcon, Loader2, RefreshCw } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Accordion,
   AccordionContent,
@@ -44,17 +45,20 @@ export function SchemaViewer() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const [isExpanded, setIsExpanded] = useState(false)
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
 
   useEffect(() => {
     fetchSchema()
   }, [])
 
-  const fetchSchema = async () => {
+  const fetchSchema = async (forceRefresh = false) => {
     setIsLoading(true)
     setError("")
 
     try {
-      const response = await fetch("/api/schema")
+      // Add cache bypass parameter if forcing refresh
+      const url = forceRefresh ? "/api/schema?refresh=true" : "/api/schema"
+      const response = await fetch(url)
       const data = await response.json()
 
       if (!response.ok) {
@@ -62,11 +66,16 @@ export function SchemaViewer() {
       }
 
       setSchema(data)
+      setLastRefresh(new Date())
     } catch (err: any) {
       setError(err.message)
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleRefresh = () => {
+    fetchSchema(true)
   }
 
   if (!isExpanded) {
@@ -100,8 +109,23 @@ export function SchemaViewer() {
               {schema.tables.length} tables
             </Badge>
           )}
+          {lastRefresh && !isLoading && (
+            <span className="text-xs text-muted-foreground">
+              Updated {new Date(lastRefresh).toLocaleTimeString()}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           {schema && <ERDiagram schema={schema} />}
           <button
             onClick={() => setIsExpanded(false)}
