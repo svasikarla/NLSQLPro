@@ -291,9 +291,12 @@ export default function ConnectionsPage() {
                   <Input
                     value={formData.host}
                     onChange={(e) => setFormData({ ...formData, host: e.target.value })}
-                    placeholder="localhost"
+                    placeholder="localhost or pooler.supabase.com"
                     required
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    For Supabase: use aws-0-[region].pooler.supabase.com
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">Port</label>
@@ -304,6 +307,9 @@ export default function ConnectionsPage() {
                     placeholder="5432"
                     required
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Use 6543 for Supabase pooler
+                  </p>
                 </div>
               </div>
 

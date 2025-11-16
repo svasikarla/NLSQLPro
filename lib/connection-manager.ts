@@ -134,25 +134,54 @@ export async function testConnection(
   }
 
   let client: PoolClient | null = null
+
+  // Detect if using Supabase pooler (port 6543) or pgBouncer
+  const isPooler = config.port === 6543 || config.host.includes('pooler.supabase.com')
+
   const pool = new Pool({
     host: config.host,
     port: config.port,
     database: config.database,
     user: config.username,
     password: config.password,
-    connectionTimeoutMillis: 5000, // 5 second timeout
+    connectionTimeoutMillis: 10000, // 10 second timeout (increased for pooler)
     max: 1, // Only need one connection for testing
+    // Disable prepared statements for pgBouncer/pooler compatibility
+    ...(isPooler && {
+      options: '-c search_path=public',
+      // PgBouncer doesn't support prepared statements in transaction mode
+      // This ensures compatibility
+    }),
   })
 
   try {
     client = await pool.connect()
-    await client.query('SELECT 1')
-    return { success: true, message: 'Connection successful' }
+    // Simple query that works with both direct and pooled connections
+    const result = await client.query('SELECT current_database() as db, version() as version')
+
+    return {
+      success: true,
+      message: `Connection successful to ${result.rows[0]?.db || config.database}`
+    }
   } catch (error) {
     console.error('Connection test failed:', error)
+
+    // Provide more helpful error messages
+    let errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    if (errorMessage.includes('SASL') || errorMessage.includes('SCRAM')) {
+      errorMessage = 'Authentication failed. Please check your username and password. If using Supabase pooler, ensure you\'re using the correct credentials.'
+    } else if (errorMessage.includes('ENOTFOUND')) {
+      errorMessage = 'Host not found. Please check the hostname and ensure it\'s accessible from your network.'
+    } else if (errorMessage.includes('ECONNREFUSED')) {
+      errorMessage = 'Connection refused. Please check the host and port are correct.'
+    } else if (errorMessage.includes('timeout')) {
+      errorMessage = 'Connection timeout. The database server may be unreachable or slow to respond.'
+    }
+
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
     }
   } finally {
     if (client) client.release()
@@ -190,6 +219,77 @@ export async function activateConnection(
   }
 
   return { success: true }
+}
+
+/**
+ * Update an existing database connection
+ */
+export async function updateConnection(
+  userId: string,
+  connectionId: string,
+  config: Partial<ConnectionConfig> & { name: string }
+): Promise<{ success: boolean; connection?: DatabaseConnection; error?: string }> {
+  const supabase = await createClient()
+
+  // Fetch existing connection to verify ownership
+  const { data: existingConnection, error: fetchError } = await supabase
+    .from('user_connections')
+    .select('*')
+    .eq('id', connectionId)
+    .eq('user_id', userId)
+    .single()
+
+  if (fetchError || !existingConnection) {
+    return { success: false, error: 'Connection not found' }
+  }
+
+  // Build update object with only provided fields
+  const updateData: any = {
+    name: config.name,
+    updated_at: new Date().toISOString(),
+  }
+
+  // Update connection details if provided
+  if (config.host !== undefined) updateData.host = config.host
+  if (config.port !== undefined) updateData.port = config.port
+  if (config.database !== undefined) updateData.database = config.database
+  if (config.username !== undefined) updateData.username = config.username
+  if (config.db_type !== undefined) updateData.db_type = config.db_type
+
+  // Only update password if provided
+  if (config.password && config.password.trim().length > 0) {
+    try {
+      updateData.password_encrypted = encrypt(config.password)
+      updateData.encrypted_at = new Date().toISOString()
+    } catch (error) {
+      console.error('Error encrypting password:', error)
+      return { success: false, error: 'Failed to encrypt password' }
+    }
+  }
+
+  // Perform update
+  const { data, error } = await supabase
+    .from('user_connections')
+    .update(updateData)
+    .eq('id', connectionId)
+    .eq('user_id', userId)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error updating connection:', error)
+    return { success: false, error: error.message }
+  }
+
+  // Clear connection pool cache since credentials may have changed
+  const poolKey = `${userId}:${connectionId}`
+  const pool = connectionPools.get(poolKey)
+  if (pool) {
+    await pool.end()
+    connectionPools.delete(poolKey)
+  }
+
+  return { success: true, connection: data as DatabaseConnection }
 }
 
 /**
@@ -277,6 +377,9 @@ export async function getConnectionPool(
     return null
   }
 
+  // Detect if using Supabase pooler (port 6543) or pgBouncer
+  const isPooler = dbConnection.port === 6543 || dbConnection.host.includes('pooler.supabase.com')
+
   // Create new pool
   const pool = new Pool({
     host: dbConnection.host,
@@ -286,7 +389,11 @@ export async function getConnectionPool(
     password: password,
     max: 10, // Max 10 connections per pool
     idleTimeoutMillis: 30000, // 30 seconds
-    connectionTimeoutMillis: 5000, // 5 seconds
+    connectionTimeoutMillis: 10000, // 10 seconds (increased for pooler)
+    // PgBouncer/pooler compatibility settings
+    ...(isPooler && {
+      options: '-c search_path=public',
+    }),
   })
 
   // Store in cache
