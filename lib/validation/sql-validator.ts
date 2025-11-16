@@ -30,8 +30,16 @@ export function validateSQL(sql: string, dbType: string = 'postgresql'): Validat
   let columns: string[] = []
 
   try {
-    // Parse SQL
-    const opt = { database: dbType === 'mysql' ? 'MySQL' : 'PostgreSQL' }
+    // Parse SQL - map dbType to node-sql-parser database names
+    const parserDatabaseMap: Record<string, string> = {
+      'mysql': 'MySQL',
+      'postgresql': 'PostgreSQL',
+      'sqlserver': 'TransactSQL',  // SQL Server support
+      'sqlite': 'SQLite',
+    }
+
+    const parserDatabase = parserDatabaseMap[dbType.toLowerCase()] || 'PostgreSQL'
+    const opt = { database: parserDatabase }
     parsedAST = parser.astify(sql, opt)
 
     // Convert to array if single statement

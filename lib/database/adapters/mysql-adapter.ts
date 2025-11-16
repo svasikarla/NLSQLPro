@@ -535,13 +535,14 @@ export class MySQLAdapter extends BaseDatabaseAdapter {
         schemaText += `  ${rel.from}.${rel.fromCol} → ${rel.to}.${rel.toCol}\n`
       }
 
-      // Add JOIN examples
-      schemaText += `\n💡 JOIN Examples:\n`
+      // Add JOIN examples with MySQL syntax
+      schemaText += `\n💡 MySQL JOIN Examples:\n`
       const exampleCount = Math.min(3, relationships.length)
       const examples: string[] = []
       for (let i = 0; i < exampleCount; i++) {
         const rel = relationships[i]
-        const example = `SELECT * FROM ${rel.from} JOIN ${rel.to} ON ${rel.from}.${rel.fromCol} = ${rel.to}.${rel.toCol}`
+        // Use MySQL syntax: backticks, LIMIT, table aliases
+        const example = `SELECT f.*, t.* FROM \`${rel.from}\` AS f INNER JOIN \`${rel.to}\` AS t ON f.\`${rel.fromCol}\` = t.\`${rel.toCol}\` LIMIT 100`
         schemaText += `  ${example}\n`
         examples.push(example)
       }

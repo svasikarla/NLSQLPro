@@ -84,11 +84,16 @@ function generateMermaidERD(schema: SchemaInfo): string {
         const colName = col.name.replace(/[^a-zA-Z0-9_]/g, "_")
         const type = (col.type || "unknown").replace(/[^a-zA-Z0-9_]/g, "_")
 
-        let attributes = ""
-        if (col.isPrimaryKey) attributes += " PK"
-        if (col.isForeignKey) attributes += " FK"
+        // Build attributes for Mermaid ER syntax
+        // CRITICAL: Mermaid requires comma-separated attributes, not space-separated
+        // Valid: "PK,FK" | Invalid: "PK FK"
+        const attributes: string[] = []
+        if (col.isPrimaryKey) attributes.push("PK")
+        if (col.isForeignKey) attributes.push("FK")
 
-        mermaidCode += `    ${type} ${colName}${attributes}\n`
+        // Format: type name "attr1,attr2" (quoted if multiple attributes)
+        const attributeStr = attributes.length > 0 ? ` "${attributes.join(",")}"` : ""
+        mermaidCode += `    ${type} ${colName}${attributeStr}\n`
       })
     }
 

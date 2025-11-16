@@ -165,24 +165,29 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
 
     const client = await this.pool.connect()
     try {
-      // Get all tables
+      // Get all tables WITH schema names (e.g., "public.users")
+      // CRITICAL: PostgreSQL uses schemas to organize tables (public, auth, extensions, etc.)
       const tablesQuery = `
-        SELECT table_name
+        SELECT
+          table_schema,
+          table_name,
+          table_schema || '.' || table_name as qualified_name
         FROM information_schema.tables
         WHERE table_schema = 'public'
-        ORDER BY table_name;
+        ORDER BY table_schema, table_name;
       `
       const tablesResult = await client.query(tablesQuery)
 
-      // Get primary keys
+      // Get primary keys WITH schema-qualified table names
       const primaryKeysQuery = `
         SELECT
-          tc.table_name,
+          tc.table_schema || '.' || tc.table_name as table_name,
           kcu.column_name
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
           ON tc.constraint_name = kcu.constraint_name
           AND tc.table_schema = kcu.table_schema
+          AND tc.table_name = kcu.table_name
         WHERE tc.constraint_type = 'PRIMARY KEY'
           AND tc.table_schema = 'public';
       `
@@ -196,12 +201,12 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
         primaryKeys.get(row.table_name)!.add(row.column_name)
       }
 
-      // Get foreign keys
+      // Get foreign keys WITH schema-qualified table names
       const foreignKeysQuery = `
         SELECT
-          tc.table_name,
+          tc.table_schema || '.' || tc.table_name as table_name,
           kcu.column_name,
-          ccu.table_name AS foreign_table_name,
+          ccu.table_schema || '.' || ccu.table_name AS foreign_table_name,
           ccu.column_name AS foreign_column_name
         FROM information_schema.table_constraints AS tc
         JOIN information_schema.key_column_usage AS kcu
@@ -242,7 +247,11 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
       }
 
       for (const table of tablesResult.rows) {
+        // Use qualified name (e.g., "public.users") as the key
+        const qualifiedName = table.qualified_name
+        const tableSchema = table.table_schema
         const tableName = table.table_name
+
         const columnsQuery = `
           SELECT
             column_name,
@@ -250,16 +259,16 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
             is_nullable,
             column_default
           FROM information_schema.columns
-          WHERE table_schema = 'public'
-            AND table_name = $1
+          WHERE table_schema = $1
+            AND table_name = $2
           ORDER BY ordinal_position;
         `
-        const columnsResult = await client.query(columnsQuery, [tableName])
+        const columnsResult = await client.query(columnsQuery, [tableSchema, tableName])
 
-        // Enhance columns with PK/FK info
-        schema.tables[tableName] = columnsResult.rows.map((col: any): ColumnMetadata => {
-          const isPrimaryKey = primaryKeys.get(tableName)?.has(col.column_name) || false
-          const foreignKey = foreignKeys.get(tableName)?.find(fk => fk.column === col.column_name)
+        // Enhance columns with PK/FK info using qualified name
+        schema.tables[qualifiedName] = columnsResult.rows.map((col: any): ColumnMetadata => {
+          const isPrimaryKey = primaryKeys.get(qualifiedName)?.has(col.column_name) || false
+          const foreignKey = foreignKeys.get(qualifiedName)?.find(fk => fk.column === col.column_name)
 
           return {
             column_name: col.column_name,
@@ -529,13 +538,14 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
         schemaText += `  ${rel.from}.${rel.fromCol} → ${rel.to}.${rel.toCol}\n`
       }
 
-      // Add JOIN examples
-      schemaText += `\n💡 JOIN Examples:\n`
+      // Add JOIN examples with PostgreSQL syntax
+      schemaText += `\n💡 PostgreSQL JOIN Examples:\n`
       const exampleCount = Math.min(3, relationships.length)
       const examples: string[] = []
       for (let i = 0; i < exampleCount; i++) {
         const rel = relationships[i]
-        const example = `SELECT * FROM ${rel.from} JOIN ${rel.to} ON ${rel.from}.${rel.fromCol} = ${rel.to}.${rel.toCol}`
+        // Use PostgreSQL syntax: double quotes for identifiers, LIMIT, table aliases
+        const example = `SELECT f.*, t.* FROM "${rel.from}" AS f INNER JOIN "${rel.to}" AS t ON f."${rel.fromCol}" = t."${rel.toCol}" LIMIT 100`
         schemaText += `  ${example}\n`
         examples.push(example)
       }

@@ -1,13 +1,15 @@
-import { Pool, PoolClient } from 'pg'
 import { createClient } from '@/lib/supabase/server'
 import { encrypt, decrypt } from '@/lib/security/encryption'
+import { createDatabaseAdapter } from '@/lib/database/adapters/adapter-factory'
+import { DatabaseType, type ConnectionConfig as AdapterConnectionConfig } from '@/lib/database/types/database'
+import type { BaseDatabaseAdapter } from '@/lib/database/adapters/base-adapter'
 
 // Type definitions
 export interface DatabaseConnection {
   id: string
   user_id: string
   name: string
-  db_type: 'postgresql' | 'mysql' | 'sqlite'
+  db_type: 'postgresql' | 'mysql' | 'sqlite' | 'sqlserver'
   host: string
   port: number
   database: string
@@ -22,7 +24,7 @@ export interface DatabaseConnection {
 
 export interface ConnectionConfig {
   name: string
-  db_type: 'postgresql' | 'mysql' | 'sqlite'
+  db_type: 'postgresql' | 'mysql' | 'sqlite' | 'sqlserver'
   host: string
   port: number
   database: string
@@ -30,8 +32,37 @@ export interface ConnectionConfig {
   password: string
 }
 
-// Connection pool cache (in-memory)
-const connectionPools = new Map<string, Pool>()
+// Connection adapter cache (in-memory)
+const connectionAdapters = new Map<string, BaseDatabaseAdapter>()
+
+/**
+ * Convert database connection to adapter config
+ */
+function toAdapterConfig(connection: DatabaseConnection, password: string): AdapterConnectionConfig {
+  // Map our db_type string to DatabaseType enum
+  const dbTypeMap: Record<DatabaseConnection['db_type'], DatabaseType> = {
+    'postgresql': DatabaseType.POSTGRESQL,
+    'mysql': DatabaseType.MYSQL,
+    'sqlite': DatabaseType.SQLITE,
+    'sqlserver': DatabaseType.SQLSERVER,
+  }
+
+  return {
+    id: connection.id,
+    name: connection.name,
+    db_type: dbTypeMap[connection.db_type],
+    host: connection.host,
+    port: connection.port,
+    database: connection.database,
+    username: connection.username,
+    password: password,
+    ssl: connection.host.includes('supabase.com') ? { rejectUnauthorized: true } : undefined,
+    poolMin: 2,
+    poolMax: 10,
+    connectionTimeout: connection.port === 6543 ? 10000 : 5000, // Longer timeout for poolers
+    idleTimeout: 30000,
+  }
+}
 
 /**
  * Get the active database connection for a user
@@ -124,68 +155,71 @@ export async function createConnection(
 }
 
 /**
- * Test a database connection
+ * Test a database connection using the appropriate adapter
  */
 export async function testConnection(
   config: ConnectionConfig
 ): Promise<{ success: boolean; error?: string; message?: string }> {
-  if (config.db_type !== 'postgresql') {
-    return { success: false, error: 'Only PostgreSQL is currently supported' }
-  }
-
-  let client: PoolClient | null = null
-
-  // Detect if using Supabase pooler (port 6543) or pgBouncer
-  const isPooler = config.port === 6543 || config.host.includes('pooler.supabase.com')
-
-  const pool = new Pool({
-    host: config.host,
-    port: config.port,
-    database: config.database,
-    user: config.username,
-    password: config.password,
-    connectionTimeoutMillis: 10000, // 10 second timeout (increased for pooler)
-    max: 1, // Only need one connection for testing
-    // Disable prepared statements for pgBouncer/pooler compatibility
-    ...(isPooler && {
-      options: '-c search_path=public',
-      // PgBouncer doesn't support prepared statements in transaction mode
-      // This ensures compatibility
-    }),
-  })
-
   try {
-    client = await pool.connect()
-    // Simple query that works with both direct and pooled connections
-    const result = await client.query('SELECT current_database() as db, version() as version')
+    // Map our db_type string to DatabaseType enum
+    const dbTypeMap: Record<ConnectionConfig['db_type'], DatabaseType> = {
+      'postgresql': DatabaseType.POSTGRESQL,
+      'mysql': DatabaseType.MYSQL,
+      'sqlite': DatabaseType.SQLITE,
+      'sqlserver': DatabaseType.SQLSERVER,
+    }
+
+    // Create adapter config
+    const adapterConfig: AdapterConnectionConfig = {
+      name: config.name,
+      db_type: dbTypeMap[config.db_type],
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      username: config.username,
+      password: config.password,
+      ssl: config.host.includes('supabase.com') ? { rejectUnauthorized: true } : undefined,
+    }
+
+    // Create adapter using factory
+    const adapter = createDatabaseAdapter(adapterConfig)
+
+    // Test connection
+    const result = await adapter.testConnection()
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error || 'Connection test failed',
+      }
+    }
 
     return {
       success: true,
-      message: `Connection successful to ${result.rows[0]?.db || config.database}`
+      message: result.message || `Connection successful to ${config.database}`,
     }
   } catch (error) {
     console.error('Connection test failed:', error)
 
-    // Provide more helpful error messages
+    // Provide helpful error messages
     let errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-    if (errorMessage.includes('SASL') || errorMessage.includes('SCRAM')) {
-      errorMessage = 'Authentication failed. Please check your username and password. If using Supabase pooler, ensure you\'re using the correct credentials.'
-    } else if (errorMessage.includes('ENOTFOUND')) {
-      errorMessage = 'Host not found. Please check the hostname and ensure it\'s accessible from your network.'
-    } else if (errorMessage.includes('ECONNREFUSED')) {
+    if (errorMessage.includes('SASL') || errorMessage.includes('SCRAM') || errorMessage.includes('authentication')) {
+      errorMessage = 'Authentication failed. Please check your username and password.'
+    } else if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('host')) {
+      errorMessage = 'Host not found. Please check the hostname and ensure it\'s accessible.'
+    } else if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('refused')) {
       errorMessage = 'Connection refused. Please check the host and port are correct.'
     } else if (errorMessage.includes('timeout')) {
       errorMessage = 'Connection timeout. The database server may be unreachable or slow to respond.'
+    } else if (errorMessage.includes('SQLITE') && errorMessage.includes('open')) {
+      errorMessage = 'SQLite file not found or cannot be opened. Please check the file path.'
     }
 
     return {
       success: false,
       error: errorMessage,
     }
-  } finally {
-    if (client) client.release()
-    await pool.end()
   }
 }
 
@@ -210,12 +244,12 @@ export async function activateConnection(
     return { success: false, error: error.message }
   }
 
-  // Clear connection pool cache when switching connections
-  const poolKey = `${userId}:${connectionId}`
-  const pool = connectionPools.get(poolKey)
-  if (pool) {
-    await pool.end()
-    connectionPools.delete(poolKey)
+  // Clear connection adapter cache when switching connections
+  const adapterKey = `${userId}:${connectionId}`
+  const adapter = connectionAdapters.get(adapterKey)
+  if (adapter) {
+    await adapter.closePool()
+    connectionAdapters.delete(adapterKey)
   }
 
   return { success: true }
@@ -281,12 +315,12 @@ export async function updateConnection(
     return { success: false, error: error.message }
   }
 
-  // Clear connection pool cache since credentials may have changed
-  const poolKey = `${userId}:${connectionId}`
-  const pool = connectionPools.get(poolKey)
-  if (pool) {
-    await pool.end()
-    connectionPools.delete(poolKey)
+  // Clear connection adapter cache since credentials may have changed
+  const adapterKey = `${userId}:${connectionId}`
+  const adapter = connectionAdapters.get(adapterKey)
+  if (adapter) {
+    await adapter.closePool()
+    connectionAdapters.delete(adapterKey)
   }
 
   return { success: true, connection: data as DatabaseConnection }
@@ -301,12 +335,12 @@ export async function deleteConnection(
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient()
 
-  // Clear connection pool cache
-  const poolKey = `${userId}:${connectionId}`
-  const pool = connectionPools.get(poolKey)
-  if (pool) {
-    await pool.end()
-    connectionPools.delete(poolKey)
+  // Clear connection adapter cache
+  const adapterKey = `${userId}:${connectionId}`
+  const adapter = connectionAdapters.get(adapterKey)
+  if (adapter) {
+    await adapter.closePool()
+    connectionAdapters.delete(adapterKey)
   }
 
   const { error } = await supabase
@@ -324,17 +358,18 @@ export async function deleteConnection(
 }
 
 /**
- * Get or create a connection pool for a specific connection
+ * Get or create a database adapter for a specific connection
  */
-export async function getConnectionPool(
+export async function getConnectionAdapter(
   userId: string,
   connectionId: string
-): Promise<Pool | null> {
-  const poolKey = `${userId}:${connectionId}`
+): Promise<BaseDatabaseAdapter | null> {
+  const adapterKey = `${userId}:${connectionId}`
 
-  // Return existing pool if available
-  if (connectionPools.has(poolKey)) {
-    return connectionPools.get(poolKey)!
+  // Return existing adapter if available and connected
+  const existingAdapter = connectionAdapters.get(adapterKey)
+  if (existingAdapter && existingAdapter.isPoolConnected()) {
+    return existingAdapter
   }
 
   // Fetch connection details
@@ -347,16 +382,11 @@ export async function getConnectionPool(
     .single()
 
   if (error || !connection) {
-    console.error('Error fetching connection for pool:', error)
+    console.error('Error fetching connection for adapter:', error)
     return null
   }
 
   const dbConnection = connection as DatabaseConnection
-
-  if (dbConnection.db_type !== 'postgresql') {
-    console.error('Only PostgreSQL is currently supported')
-    return null
-  }
 
   // Decrypt the password
   let password: string
@@ -377,29 +407,40 @@ export async function getConnectionPool(
     return null
   }
 
-  // Detect if using Supabase pooler (port 6543) or pgBouncer
-  const isPooler = dbConnection.port === 6543 || dbConnection.host.includes('pooler.supabase.com')
+  try {
+    // Create adapter config
+    const adapterConfig = toAdapterConfig(dbConnection, password)
 
-  // Create new pool
-  const pool = new Pool({
-    host: dbConnection.host,
-    port: dbConnection.port,
-    database: dbConnection.database,
-    user: dbConnection.username,
-    password: password,
-    max: 10, // Max 10 connections per pool
-    idleTimeoutMillis: 30000, // 30 seconds
-    connectionTimeoutMillis: 10000, // 10 seconds (increased for pooler)
-    // PgBouncer/pooler compatibility settings
-    ...(isPooler && {
-      options: '-c search_path=public',
-    }),
-  })
+    // Create adapter using factory
+    const adapter = createDatabaseAdapter(adapterConfig)
 
-  // Store in cache
-  connectionPools.set(poolKey, pool)
+    // Initialize connection pool
+    await adapter.createPool()
 
-  return pool
+    // Store in cache
+    connectionAdapters.set(adapterKey, adapter)
+
+    return adapter
+  } catch (error) {
+    console.error('Error creating database adapter:', error)
+    return null
+  }
+}
+
+/**
+ * Legacy function for backward compatibility
+ * @deprecated Use getConnectionAdapter instead
+ */
+export async function getConnectionPool(userId: string, connectionId: string): Promise<any | null> {
+  console.warn('getConnectionPool is deprecated. Use getConnectionAdapter instead.')
+  const adapter = await getConnectionAdapter(userId, connectionId)
+
+  // For PostgreSQL, return the underlying pool for backward compatibility
+  if (adapter && (adapter as any).pool) {
+    return (adapter as any).pool
+  }
+
+  return null
 }
 
 /**
@@ -412,6 +453,25 @@ export function validateConnectionConfig(
     return { valid: false, error: 'Connection name is required' }
   }
 
+  if (!config.db_type) {
+    return { valid: false, error: 'Database type is required' }
+  }
+
+  const validTypes: ConnectionConfig['db_type'][] = ['postgresql', 'mysql', 'sqlite', 'sqlserver']
+  if (!validTypes.includes(config.db_type)) {
+    return { valid: false, error: 'Invalid database type' }
+  }
+
+  // SQLite has different requirements
+  if (config.db_type === 'sqlite') {
+    if (!config.database || config.database.trim().length === 0) {
+      return { valid: false, error: 'Database file path is required for SQLite' }
+    }
+    // SQLite doesn't need host/port/username/password validation
+    return { valid: true }
+  }
+
+  // For other databases, validate standard fields
   if (!config.host || config.host.trim().length === 0) {
     return { valid: false, error: 'Host is required' }
   }
@@ -432,18 +492,23 @@ export function validateConnectionConfig(
     return { valid: false, error: 'Password is required' }
   }
 
-  if (config.db_type !== 'postgresql') {
-    return { valid: false, error: 'Only PostgreSQL is currently supported' }
-  }
-
   return { valid: true }
 }
 
 /**
- * Close all connection pools (for cleanup)
+ * Close all connection adapters (for cleanup)
+ */
+export async function closeAllAdapters(): Promise<void> {
+  const promises = Array.from(connectionAdapters.values()).map((adapter) => adapter.closePool())
+  await Promise.all(promises)
+  connectionAdapters.clear()
+}
+
+/**
+ * Legacy function for backward compatibility
+ * @deprecated Use closeAllAdapters instead
  */
 export async function closeAllPools(): Promise<void> {
-  const promises = Array.from(connectionPools.values()).map((pool) => pool.end())
-  await Promise.all(promises)
-  connectionPools.clear()
+  console.warn('closeAllPools is deprecated. Use closeAllAdapters instead.')
+  await closeAllAdapters()
 }

@@ -15,6 +15,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
 
 interface Connection {
@@ -42,6 +49,7 @@ export default function ConnectionsPage() {
   // Form state
   const [formData, setFormData] = useState({
     name: "",
+    db_type: "postgresql" as "postgresql" | "mysql" | "sqlite" | "sqlserver",
     host: "",
     port: "5432",
     database: "",
@@ -76,6 +84,26 @@ export default function ConnectionsPage() {
     }
   }
 
+  // Helper to get default port for database type
+  const getDefaultPort = (dbType: typeof formData.db_type): string => {
+    const ports = {
+      postgresql: "5432",
+      mysql: "3306",
+      sqlite: "",
+      sqlserver: "1433",
+    }
+    return ports[dbType]
+  }
+
+  // Handle database type change
+  const handleDbTypeChange = (newDbType: typeof formData.db_type) => {
+    setFormData({
+      ...formData,
+      db_type: newDbType,
+      port: getDefaultPort(newDbType),
+    })
+  }
+
   const handleTestConnection = async () => {
     setTestStatus("testing")
     setTestMessage("")
@@ -90,7 +118,7 @@ export default function ConnectionsPage() {
           database: formData.database,
           username: formData.username,
           password: formData.password,
-          db_type: "postgresql",
+          db_type: formData.db_type,
         }),
       })
 
@@ -113,6 +141,7 @@ export default function ConnectionsPage() {
     setEditingConnection(connection)
     setFormData({
       name: connection.name,
+      db_type: connection.db_type as typeof formData.db_type,
       host: connection.host,
       port: connection.port.toString(),
       database: connection.database,
@@ -133,11 +162,11 @@ export default function ConnectionsPage() {
       const endpoint = editingConnection ? "/api/connections/update" : "/api/connections/create"
       const body: any = {
         name: formData.name,
+        db_type: formData.db_type,
         host: formData.host,
         port: parseInt(formData.port),
         database: formData.database,
         username: formData.username,
-        db_type: "postgresql",
       }
 
       // Only include password if it's provided
@@ -165,6 +194,7 @@ export default function ConnectionsPage() {
       // Reset form
       setFormData({
         name: "",
+        db_type: "postgresql",
         host: "",
         port: "5432",
         database: "",
@@ -269,8 +299,8 @@ export default function ConnectionsPage() {
               <DialogTitle>{editingConnection ? 'Edit Database Connection' : 'Add Database Connection'}</DialogTitle>
               <DialogDescription>
                 {editingConnection
-                  ? 'Update your PostgreSQL database connection details'
-                  : 'Enter your PostgreSQL database connection details'}
+                  ? 'Update your database connection details'
+                  : 'Enter your database connection details'}
               </DialogDescription>
             </DialogHeader>
 
@@ -285,7 +315,37 @@ export default function ConnectionsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Database Type</label>
+                <Select value={formData.db_type} onValueChange={handleDbTypeChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select database type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                    <SelectItem value="mysql">MySQL</SelectItem>
+                    <SelectItem value="sqlite">SQLite</SelectItem>
+                    <SelectItem value="sqlserver">SQL Server</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {formData.db_type === 'sqlite' ? (
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">Database File Path</label>
+                  <Input
+                    value={formData.database}
+                    onChange={(e) => setFormData({ ...formData, database: e.target.value })}
+                    placeholder="/path/to/database.sqlite"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Path to SQLite database file on the server
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">Host</label>
                   <Input
@@ -346,6 +406,8 @@ export default function ConnectionsPage() {
                   />
                 </div>
               </div>
+              </>
+              )}
 
               {/* Test Connection */}
               <div className="flex items-center gap-3">

@@ -63,7 +63,7 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
       connectionTimeout: this.config.connectionTimeout || 15000,
       requestTimeout: 30000,
       options: {
-        encrypt: this.config.ssl ? true : false,
+        encrypt: true, // SQL Server requires encryption by default
         trustServerCertificate: true, // For development; use proper certs in production
         enableArithAbort: true,
       },
@@ -105,7 +105,7 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
         password: password,
         connectionTimeout: 5000,
         options: {
-          encrypt: this.config.ssl ? true : false,
+          encrypt: true, // SQL Server requires encryption by default
           trustServerCertificate: true,
           enableArithAbort: true,
         },
@@ -168,23 +168,29 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
     if (!this.pool) throw new DatabaseError('Pool not initialized')
 
     try {
-      // Get all tables
+      // Get all tables WITH schema names (e.g., "SalesLT.Product")
+      // CRITICAL: SQL Server uses schemas to organize tables (SalesLT, dbo, HumanResources, etc.)
       const tablesResult = await this.pool.request().query(`
-        SELECT TABLE_NAME as table_name
+        SELECT
+          TABLE_SCHEMA as table_schema,
+          TABLE_NAME as table_name,
+          TABLE_SCHEMA + '.' + TABLE_NAME as qualified_name
         FROM INFORMATION_SCHEMA.TABLES
         WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_CATALOG = DB_NAME()
-        ORDER BY TABLE_NAME
+        ORDER BY TABLE_SCHEMA, TABLE_NAME
       `)
       const tables = tablesResult.recordset
 
-      // Get primary keys
+      // Get primary keys WITH schema-qualified table names
       const primaryKeysResult = await this.pool.request().query(`
         SELECT
-          tc.TABLE_NAME as table_name,
+          tc.TABLE_SCHEMA + '.' + tc.TABLE_NAME as table_name,
           kcu.COLUMN_NAME as column_name
         FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
         JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
           ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+          AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+          AND tc.TABLE_NAME = kcu.TABLE_NAME
         WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
           AND tc.TABLE_CATALOG = DB_NAME()
       `)
@@ -198,13 +204,13 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
         primaryKeys.get(row.table_name)!.add(row.column_name)
       }
 
-      // Get foreign keys
+      // Get foreign keys WITH schema names (using SCHEMA_NAME function)
       const foreignKeysResult = await this.pool.request().query(`
         SELECT
           fk.name as constraint_name,
-          tp.name as table_name,
+          SCHEMA_NAME(tp.schema_id) + '.' + tp.name as table_name,
           cp.name as column_name,
-          tr.name as foreign_table_name,
+          SCHEMA_NAME(tr.schema_id) + '.' + tr.name as foreign_table_name,
           cr.name as foreign_column_name
         FROM sys.foreign_keys fk
         INNER JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
@@ -243,7 +249,11 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
       }
 
       for (const table of tables) {
+        // Use qualified name (e.g., "SalesLT.Product") as the key
+        const qualifiedName = table.qualified_name
+        const tableSchema = table.table_schema
         const tableName = table.table_name
+
         const columnsResult = await this.pool.request().query(`
           SELECT
             c.COLUMN_NAME as column_name,
@@ -255,15 +265,15 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
             c.NUMERIC_SCALE as scale,
             COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') as is_identity
           FROM INFORMATION_SCHEMA.COLUMNS c
-          WHERE c.TABLE_NAME = '${tableName}' AND c.TABLE_CATALOG = DB_NAME()
+          WHERE c.TABLE_SCHEMA = '${tableSchema}' AND c.TABLE_NAME = '${tableName}' AND c.TABLE_CATALOG = DB_NAME()
           ORDER BY c.ORDINAL_POSITION
         `)
         const columnsData = columnsResult.recordset
 
-        // Enhance columns with PK/FK info
-        schema.tables[tableName] = columnsData.map((col: any): ColumnMetadata => {
-          const isPrimaryKey = primaryKeys.get(tableName)?.has(col.column_name) || false
-          const foreignKey = foreignKeys.get(tableName)?.find(fk => fk.column === col.column_name)
+        // Enhance columns with PK/FK info using qualified name
+        schema.tables[qualifiedName] = columnsData.map((col: any): ColumnMetadata => {
+          const isPrimaryKey = primaryKeys.get(qualifiedName)?.has(col.column_name) || false
+          const foreignKey = foreignKeys.get(qualifiedName)?.find(fk => fk.column === col.column_name)
 
           return {
             column_name: col.column_name,
@@ -509,9 +519,20 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
   formatSchemaForPrompt(schema: SchemaInfo): PromptContext {
     let schemaText = ''
 
+    // Helper function to convert "Schema.Table" to "[Schema].[Table]"
+    const bracketQualify = (qualifiedName: string): string => {
+      if (qualifiedName.includes('.')) {
+        const parts = qualifiedName.split('.')
+        return parts.map(p => `[${p}]`).join('.')
+      }
+      return `[${qualifiedName}]`
+    }
+
     // Format tables with enhanced column info
     for (const [tableName, columns] of Object.entries(schema.tables)) {
-      schemaText += `\n📋 Table: ${tableName}\n`
+      // Display with bracket notation: [SalesLT].[Product]
+      const bracketedName = bracketQualify(tableName)
+      schemaText += `\n📋 Table: ${bracketedName}\n`
       schemaText += `Columns:\n`
       for (const col of columns) {
         let colInfo = `  - ${col.column_name} (${col.data_type})`
@@ -521,7 +542,8 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
         if (col.is_nullable === 'NO') colInfo += ' NOT NULL'
 
         if (col.foreign_key) {
-          colInfo += ` → REFERENCES ${col.foreign_key.refTable}(${col.foreign_key.refColumn})`
+          const refTableBracketed = bracketQualify(col.foreign_key.refTable)
+          colInfo += ` → REFERENCES ${refTableBracketed}(${col.foreign_key.refColumn})`
         }
 
         schemaText += colInfo + '\n'
@@ -533,16 +555,21 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
     if (relationships.length > 0) {
       schemaText += `\n🔗 Relationships (for JOINs):\n`
       for (const rel of relationships) {
-        schemaText += `  ${rel.from}.${rel.fromCol} → ${rel.to}.${rel.toCol}\n`
+        const fromBracketed = bracketQualify(rel.from)
+        const toBracketed = bracketQualify(rel.to)
+        schemaText += `  ${fromBracketed}.${rel.fromCol} → ${toBracketed}.${rel.toCol}\n`
       }
 
-      // Add JOIN examples
-      schemaText += `\n💡 JOIN Examples:\n`
+      // Add JOIN examples with T-SQL syntax and schema qualification
+      schemaText += `\n💡 T-SQL JOIN Examples (with schema qualification):\n`
       const exampleCount = Math.min(3, relationships.length)
       const examples: string[] = []
       for (let i = 0; i < exampleCount; i++) {
         const rel = relationships[i]
-        const example = `SELECT * FROM ${rel.from} JOIN ${rel.to} ON ${rel.from}.${rel.fromCol} = ${rel.to}.${rel.toCol}`
+        const fromBracketed = bracketQualify(rel.from)
+        const toBracketed = bracketQualify(rel.to)
+        // Use T-SQL syntax: TOP, square brackets with schema.table, table aliases
+        const example = `SELECT TOP 100 f.*, t.* FROM ${fromBracketed} AS f INNER JOIN ${toBracketed} AS t ON f.[${rel.fromCol}] = t.[${rel.toCol}]`
         schemaText += `  ${example}\n`
         examples.push(example)
       }
@@ -566,36 +593,67 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
     return `CRITICAL RULES:
 1. Only generate SELECT queries (read-only)
 2. Use proper SQL Server (T-SQL) syntax
-3. Use square brackets [table_name] for identifiers with spaces or reserved words
-4. Use the relationships shown above to write correct JOINs
-5. Use TOP clause instead of LIMIT (e.g., SELECT TOP 100 *)
-6. Return ONLY the SQL query, no explanations, no markdown formatting, no code blocks
-7. Do not include semicolon at the end
-8. When joining tables, ALWAYS use the foreign key relationships shown above
-9. Use table aliases for clarity (e.g., u for users, o for orders)
-10. If the query involves multiple tables, use explicit JOIN conditions based on the relationships
+3. ALWAYS use schema-qualified table names: [Schema].[Table] (e.g., [SalesLT].[Product])
+4. Use square brackets for ALL identifiers: [Schema].[Table], [column_name]
+5. Use the relationships shown above to write correct JOINs
+6. Use TOP clause instead of LIMIT (e.g., SELECT TOP 100 *)
+7. Return ONLY the SQL query, no explanations, no markdown formatting, no code blocks
+8. Do not include semicolon at the end
+9. When joining tables, ALWAYS use the foreign key relationships shown above
+10. Use table aliases for clarity (e.g., p for products, c for categories)
+11. If the query involves multiple tables, use explicit JOIN conditions based on the relationships
+
+⚠️ SCHEMA QUALIFICATION - ABSOLUTELY CRITICAL:
+- SQL Server tables MUST be qualified with schema names
+- ALWAYS use [Schema].[Table] format (e.g., [SalesLT].[Product])
+- NEVER use bare table names (Product ❌, [SalesLT].[Product] ✅)
+- Common schemas: SalesLT, dbo, HumanResources, Production, Purchasing
+- If you see a table like "SalesLT.Product" in the schema, use [SalesLT].[Product]
 
 IMPORTANT JOIN INSTRUCTIONS:
 - NEVER create joins without looking at the relationships section
 - Use INNER JOIN for required relationships
 - Use LEFT JOIN when the relationship is optional
 - ALWAYS specify the ON condition explicitly
+- ALWAYS use schema-qualified names in JOIN clauses
 
-SQL SERVER-SPECIFIC:
-- Use square brackets for identifiers: [table_name], [column_name]
-- Date functions: GETDATE(), DATEADD(), DATEDIFF(), FORMAT()
-- String functions: CONCAT(), SUBSTRING(), LEN(), LOWER(), UPPER()
-- Use TOP instead of LIMIT: SELECT TOP 100 *
+SQL SERVER (T-SQL) SYNTAX - CRITICAL:
+- Use square brackets for identifiers: [Schema].[Table], [column_name]
+- Use TOP instead of LIMIT: SELECT TOP 100 * (NOT LIMIT 100)
 - Use IDENTITY instead of AUTO_INCREMENT
-- String concatenation: Use CONCAT() or + operator`
+- String concatenation: Use CONCAT() or + operator
+
+DATE/TIME FUNCTIONS (T-SQL):
+- Current timestamp: GETDATE() or SYSDATETIME() (NOT NOW() or CURRENT_TIMESTAMP)
+- Extract date parts: DATEPART(year, date) or YEAR(date), MONTH(date), DAY(date) (NOT EXTRACT())
+- Date arithmetic: DATEADD(day, 7, GETDATE()) (NOT date + INTERVAL)
+- Date difference: DATEDIFF(day, start_date, end_date)
+- Format dates: FORMAT(date, 'yyyy-MM-dd') or CONVERT(VARCHAR, date, 120)
+
+STRING FUNCTIONS:
+- Length: LEN(string) (NOT LENGTH())
+- Substring: SUBSTRING(string, start, length) (same as PostgreSQL)
+- Concatenation: CONCAT(str1, str2) or str1 + str2
+- Case conversion: LOWER(), UPPER()
+- Find position: CHARINDEX('search', string) (NOT POSITION() or INSTR())
+
+AGGREGATES & WINDOW FUNCTIONS:
+- Same as PostgreSQL: COUNT(), SUM(), AVG(), MIN(), MAX()
+- Window functions: ROW_NUMBER(), RANK(), DENSE_RANK() OVER (PARTITION BY ... ORDER BY ...)
+
+IMPORTANT: DO NOT use PostgreSQL-specific functions like EXTRACT(), NOW(), or PostgreSQL date arithmetic`
   }
 
   getExampleQueries(): string[] {
     return [
-      'SELECT TOP 10 * FROM users',
-      'SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id',
-      'SELECT TOP 20 * FROM products WHERE price > 100 ORDER BY price DESC',
-      'SELECT COUNT(*) as total, status FROM orders GROUP BY status',
+      'SELECT TOP 10 * FROM [dbo].[users]',
+      'SELECT u.name, o.total FROM [dbo].[users] u JOIN [dbo].[orders] o ON u.id = o.user_id',
+      'SELECT TOP 20 * FROM [SalesLT].[Product] WHERE ListPrice > 100 ORDER BY ListPrice DESC',
+      'SELECT COUNT(*) as total, [Status] FROM [dbo].[orders] GROUP BY [Status]',
+      'SELECT TOP 100 * FROM [dbo].[orders] WHERE created_at > DATEADD(day, -30, GETDATE())',
+      'SELECT YEAR(created_at) as year, COUNT(*) as count FROM [dbo].[orders] GROUP BY YEAR(created_at)',
+      'SELECT * FROM [dbo].[users] WHERE DATEDIFF(day, last_login, GETDATE()) > 7',
+      'SELECT p.*, c.Name as CategoryName FROM [SalesLT].[Product] p JOIN [SalesLT].[ProductCategory] c ON p.ProductCategoryID = c.ProductCategoryID',
     ]
   }
 

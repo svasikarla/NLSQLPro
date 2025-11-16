@@ -21,11 +21,33 @@ const DEFAULT_CONFIG: QuerySafetyConfig = {
 
 /**
  * Enforce row limit on SQL query
- * Adds or modifies LIMIT clause to prevent large result sets
+ * Adds or modifies LIMIT/TOP clause based on database type
  */
-export function enforceRowLimit(sql: string, maxRows: number = DEFAULT_CONFIG.maxRows): string {
+export function enforceRowLimit(
+  sql: string,
+  maxRows: number = DEFAULT_CONFIG.maxRows,
+  dbType: string = 'postgresql'
+): string {
   const trimmed = sql.trim()
+  const upperSQL = trimmed.toUpperCase()
 
+  // SQL Server uses TOP syntax
+  if (dbType.toLowerCase() === 'sqlserver') {
+    // Check if query already has TOP
+    const topRegex = /SELECT\s+TOP\s+(\d+)/i
+    const match = trimmed.match(topRegex)
+
+    if (match) {
+      const existingLimit = parseInt(match[1])
+      if (existingLimit <= maxRows) return sql
+      return trimmed.replace(topRegex, `SELECT TOP ${maxRows}`)
+    }
+
+    // Add TOP after SELECT
+    return trimmed.replace(/^SELECT/i, `SELECT TOP ${maxRows}`)
+  }
+
+  // PostgreSQL, MySQL, SQLite use LIMIT syntax
   // Check if query already has a LIMIT clause
   const limitRegex = /LIMIT\s+(\d+)(\s+OFFSET\s+\d+)?$/i
   const match = trimmed.match(limitRegex)
@@ -236,8 +258,8 @@ export function makeSafeQuery(
     throw new Error(`Query safety validation failed: ${validation.errors.join(', ')}`)
   }
 
-  // Apply row limit
-  const safeSql = enforceRowLimit(sql, finalConfig.maxRows)
+  // Apply row limit (database-specific syntax)
+  const safeSql = enforceRowLimit(sql, finalConfig.maxRows, dbType)
 
   // Get timeout SQL
   const timeoutSQL = getTimeoutSQL(dbType, validation.recommendedTimeout)

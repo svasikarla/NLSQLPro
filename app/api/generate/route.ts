@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { getActiveConnection } from "@/lib/connection-manager"
-import { createDatabaseAdapter, DatabaseType } from "@/lib/database"
+import { getActiveConnection, getConnectionAdapter } from "@/lib/connection-manager"
 import {
   detectPromptInjection,
   getSecurityErrorMessage,
@@ -98,28 +97,27 @@ export async function POST(request: Request) {
       )
     }
 
-    // Create database adapter
-    const adapter = createDatabaseAdapter({
-      id: activeConnection.id,
-      name: activeConnection.name,
-      db_type: activeConnection.db_type as DatabaseType,
-      host: activeConnection.host,
-      port: activeConnection.port,
-      database: activeConnection.database,
-      username: activeConnection.username,
-      password_encrypted: activeConnection.password_encrypted,
-      password: activeConnection.password, // Legacy fallback
-    })
+    // Get database adapter (uses cached adapter if available)
+    const adapter = await getConnectionAdapter(user.id, activeConnection.id)
+
+    if (!adapter) {
+      return NextResponse.json(
+        { error: "Failed to establish database connection" },
+        { status: 500 }
+      )
+    }
 
     try {
-      // Initialize adapter pool
-      await adapter.createPool()
-
       // Get database schema using adapter
       const schema = await adapter.getSchema()
 
       // Format schema for LLM prompt
       const promptContext = adapter.formatSchemaForPrompt(schema)
+
+      // Get dialect-specific guidelines and examples from adapter
+      const sqlDialect = adapter.getSQLDialect()
+      const dialectGuidelines = adapter.getSQLGenerationGuidelines()
+      const exampleQueries = adapter.getExampleQueries()
 
       // Generate SQL with automatic retry on validation failures
       const { generateSQLWithRetry } = await import('@/lib/llm/sql-generator')
@@ -130,6 +128,12 @@ export async function POST(request: Request) {
         schemaText: promptContext.schemaText,
         dbType: activeConnection.db_type,
         maxRetries: 3,
+        // Pass adapter-specific context for dialect-aware generation
+        sqlDialect,
+        dialectGuidelines,
+        exampleQueries,
+        // Use adapter's dialect-specific validator
+        validator: (sql: string) => adapter.validateQuery(sql),
       })
 
       return NextResponse.json(
@@ -149,9 +153,6 @@ export async function POST(request: Request) {
         { error: `Failed to generate valid SQL: ${error.message}` },
         { status: 400 }
       )
-    } finally {
-      // Clean up adapter pool
-      await adapter.closePool()
     }
   } catch (error: any) {
     console.error("Generate API error:", error)

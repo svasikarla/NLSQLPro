@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { getActiveConnection } from "@/lib/connection-manager"
+import { getActiveConnection, getConnectionAdapter } from "@/lib/connection-manager"
 import { makeSafeQuery } from "@/lib/security/query-safety"
-import { createDatabaseAdapter, DatabaseType } from "@/lib/database"
 import {
   checkQueryExecutionLimit,
   getRateLimitHeaders,
@@ -59,23 +58,17 @@ export async function POST(request: Request) {
       )
     }
 
-    // Create database adapter
-    const adapter = createDatabaseAdapter({
-      id: activeConnection.id,
-      name: activeConnection.name,
-      db_type: activeConnection.db_type as DatabaseType,
-      host: activeConnection.host,
-      port: activeConnection.port,
-      database: activeConnection.database,
-      username: activeConnection.username,
-      password_encrypted: activeConnection.password_encrypted,
-      password: activeConnection.password, // Legacy fallback
-    })
+    // Get database adapter (uses cached adapter if available)
+    const adapter = await getConnectionAdapter(user.id, activeConnection.id)
+
+    if (!adapter) {
+      return NextResponse.json(
+        { error: "Failed to establish database connection" },
+        { status: 500 }
+      )
+    }
 
     try {
-      // Initialize adapter pool
-      await adapter.createPool()
-
       // Apply comprehensive security checks and safety measures
       let safeQuery
       try {
@@ -119,39 +112,30 @@ export async function POST(request: Request) {
           headers: getRateLimitHeaders(rateLimitResult),
         }
       )
-    } finally {
-      // Clean up adapter pool
-      await adapter.closePool()
+    } catch (queryError: any) {
+      // Handle query execution errors
+      console.error("Query execution error:", queryError)
+
+      let errorMessage = "Failed to execute query"
+
+      // Use adapter's error detection if available
+      if (adapter.isSyntaxError && adapter.isSyntaxError(queryError)) {
+        errorMessage = "Syntax error in SQL query"
+      } else if (adapter.isTimeoutError && adapter.isTimeoutError(queryError)) {
+        errorMessage = "Query timeout (exceeded 30 seconds)"
+      } else if (queryError.message) {
+        errorMessage = queryError.message
+      }
+
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 500 }
+      )
     }
   } catch (error: any) {
     console.error("Execute API error:", error)
-
-    // Use adapter error mapping if available
-    let errorMessage = "Failed to execute query"
-
-    if (error.code) {
-      switch (error.code) {
-        case "42P01":
-          errorMessage = "Table does not exist"
-          break
-        case "42703":
-          errorMessage = "Column does not exist"
-          break
-        case "42601":
-          errorMessage = "Syntax error in SQL query"
-          break
-        case "57014":
-          errorMessage = "Query timeout (exceeded 30 seconds)"
-          break
-        default:
-          errorMessage = error.message || "Database query failed"
-      }
-    } else {
-      errorMessage = error.message || "Failed to execute query"
-    }
-
     return NextResponse.json(
-      { error: errorMessage },
+      { error: error.message || "Failed to execute query" },
       { status: 500 }
     )
   }
