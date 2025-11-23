@@ -436,7 +436,6 @@ export const SQLITE_PROVIDERS: ProviderConfig[] = [
     ],
     template: {
       host: "/path/to/database.sqlite",
-      database: "main",
     },
   },
   {
@@ -452,7 +451,6 @@ export const SQLITE_PROVIDERS: ProviderConfig[] = [
     ],
     template: {
       host: ":memory:",
-      database: "main",
     },
   },
 ]
