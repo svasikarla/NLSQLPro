@@ -210,8 +210,8 @@ export function ConnectionHealthDashboard({
               {metrics.health ? `${metrics.health.latency}ms` : `${metrics.avgConnectionTime.toFixed(0)}ms`}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {metrics.health?.latency < 1000 ? '⚡ Fast' :
-               metrics.health?.latency < 3000 ? '✅ Good' : '⚠️ Slow'}
+              {metrics.health?.latency !== undefined && metrics.health.latency < 1000 ? '⚡ Fast' :
+               metrics.health?.latency !== undefined && metrics.health.latency < 3000 ? '✅ Good' : '⚠️ Slow'}
             </p>
           </CardContent>
         </Card>
