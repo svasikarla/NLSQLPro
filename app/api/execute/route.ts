@@ -7,6 +7,9 @@ import {
   getRateLimitHeaders,
   logRateLimitEvent,
 } from "@/lib/ratelimit/rate-limiter"
+import { getCachedSchema } from "@/lib/cache/schema-cache"
+import { getOrBuildSchemaKnowledge } from "@/lib/visualization/schema-knowledge-manager"
+import { parseSQL } from "@/lib/visualization/sql-parser-integration"
 
 export async function POST(request: Request) {
   try {
@@ -94,11 +97,63 @@ export async function POST(request: Request) {
         safeQuery.validation.recommendedTimeout || 30
       )
 
+      // NEW: Fetch schema knowledge for enhanced visualizations
+      let schemaKnowledge = null
+      let primaryTable = null
+
+      try {
+        // Parse SQL to extract primary table
+        const parsedSQL = parseSQL(sql)
+        if (parsedSQL.isValid && parsedSQL.tables.length > 0) {
+          primaryTable = parsedSQL.tables[0]
+        }
+
+        // Get cached schema for the connection
+        const cachedSchema = await getCachedSchema(activeConnection.id)
+
+        if (cachedSchema) {
+          // Build or retrieve schema knowledge
+          schemaKnowledge = await getOrBuildSchemaKnowledge(
+            activeConnection.id,
+            cachedSchema
+          )
+          console.log('[Execute API] Schema knowledge loaded for visualizations')
+        } else {
+          console.log('[Execute API] No cached schema available - visualizations will use value inference')
+        }
+      } catch (schemaError) {
+        console.error('[Execute API] Error loading schema knowledge:', schemaError)
+        // Don't fail the query execution - just log the error
+      }
+
       return NextResponse.json(
         {
           results: result.rows,
           rowCount: result.rowCount || 0,
           executionTime: result.executionTime,
+          fields: result.fields || [], // Include field metadata for visualizations
+          // NEW: Include schema knowledge for V2 visualizations
+          schemaKnowledge: schemaKnowledge ? {
+            connectionId: schemaKnowledge.connectionId,
+            tables: Array.from(schemaKnowledge.tables.entries()).map(([tableName, columns]) => ({
+              name: tableName,
+              columns: columns.map(col => ({
+                columnName: col.columnName,
+                dbType: col.dbType,
+                semanticType: col.semanticType,
+                cardinality: col.cardinality,
+                isPrimaryKey: col.isPrimaryKey,
+                isForeignKey: col.isForeignKey,
+                foreignKeyTo: col.foreignKeyTo,
+                isNullable: col.isNullable,
+                confidence: col.confidence,
+                reasoning: col.reasoning
+              }))
+            })),
+            relationships: schemaKnowledge.relationships,
+            lastUpdated: schemaKnowledge.lastUpdated
+          } : null,
+          primaryTable,
           // Include safety metadata for transparency
           safety: {
             limitApplied: safeQuery.sql !== sql,

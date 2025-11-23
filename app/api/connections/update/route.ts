@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
     if (body.username !== undefined) config.username = body.username
     if (body.db_type !== undefined) config.db_type = body.db_type
     if (body.password) config.password = body.password
+    if (body.ssl !== undefined) config.ssl = body.ssl
 
     // Update connection
     const result = await updateConnection(user.id, body.connectionId, config)

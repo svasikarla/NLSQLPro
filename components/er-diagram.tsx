@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from "react"
 import mermaid from "mermaid"
-import { Network, Download } from "lucide-react"
+import { Network, Download, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -128,7 +128,12 @@ export function ERDiagram({ schema }: ERDiagramProps) {
 
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const svgContainerRef = useRef<HTMLDivElement>(null)
   const [isRendering, setIsRendering] = useState(false)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
 
   // Generate mermaid code and memoize it to prevent unnecessary regeneration
   const mermaidCode = useMemo(() => generateMermaidERD(schema), [schema])
@@ -250,6 +255,43 @@ export function ERDiagram({ schema }: ERDiagramProps) {
     waitForContainer()
   }, [isOpen, mermaidCode, schema])
 
+  // Zoom controls
+  const handleZoomIn = () => {
+    setZoom((prev) => Math.min(prev + 0.2, 3))
+  }
+
+  const handleZoomOut = () => {
+    setZoom((prev) => Math.max(prev - 0.2, 0.5))
+  }
+
+  const handleResetZoom = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+
+  // Mouse wheel zoom
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? -0.1 : 0.1
+    setZoom((prev) => Math.max(0.5, Math.min(3, prev + delta)))
+  }
+
+  // Pan controls
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true)
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
+    }
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+  }
+
   const handleExportSVG = () => {
     if (containerRef.current) {
       const svgElement = containerRef.current.querySelector("svg")
@@ -288,7 +330,24 @@ export function ERDiagram({ schema }: ERDiagramProps) {
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleZoomIn} className="gap-2">
+                <ZoomIn size={16} />
+                Zoom In
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleZoomOut} className="gap-2">
+                <ZoomOut size={16} />
+                Zoom Out
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleResetZoom} className="gap-2">
+                <Maximize2 size={16} />
+                Reset
+              </Button>
+              <span className="text-sm text-muted-foreground self-center ml-2">
+                {Math.round(zoom * 100)}%
+              </span>
+            </div>
             <Button variant="outline" size="sm" onClick={handleExportSVG} className="gap-2">
               <Download size={16} />
               Export SVG
@@ -296,9 +355,25 @@ export function ERDiagram({ schema }: ERDiagramProps) {
           </div>
 
           <div
-            ref={containerRef}
-            className="bg-muted/30 rounded-lg p-4 overflow-auto min-h-[400px] flex items-center justify-center"
-          />
+            ref={svgContainerRef}
+            className="bg-muted/30 rounded-lg overflow-hidden min-h-[400px] relative"
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+          >
+            <div
+              ref={containerRef}
+              className="flex items-center justify-center p-4"
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: 'center center',
+                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+              }}
+            />
+          </div>
 
           <details className="text-xs">
             <summary className="cursor-pointer text-muted-foreground hover:text-foreground mb-2">

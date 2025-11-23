@@ -123,7 +123,12 @@ export class AdapterFactory {
         errors.push('Either username or connection_string is required')
       }
 
-      if (!config.password && !config.password_encrypted && !config.connection_string) {
+      // Check if password is provided (allow empty string as valid)
+      const hasPassword = config.password !== undefined && config.password !== null
+      const hasPasswordEncrypted = config.password_encrypted !== undefined && config.password_encrypted !== null
+      const hasConnectionString = config.connection_string !== undefined && config.connection_string !== null
+
+      if (!hasPassword && !hasPasswordEncrypted && !hasConnectionString) {
         errors.push('Either password, password_encrypted, or connection_string is required')
       }
     }

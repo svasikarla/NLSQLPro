@@ -103,7 +103,7 @@ export class SQLServerAdapter extends BaseDatabaseAdapter {
         database: this.config.database,
         user: this.config.username,
         password: password,
-        connectionTimeout: 5000,
+        connectionTimeout: this.config.connectionTimeout || 30000, // Increased for Azure SQL Database
         options: {
           encrypt: true, // SQL Server requires encryption by default
           trustServerCertificate: true,

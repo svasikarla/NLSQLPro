@@ -49,6 +49,27 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
       throw new DatabaseError('No password provided')
     }
 
+    // Handle SSL configuration properly
+    console.log('[PostgreSQL Adapter] SSL config received:', this.config.ssl)
+    console.log('[PostgreSQL Adapter] Host:', this.config.host)
+    let sslConfig: any = false
+    if (this.config.ssl !== undefined && this.config.ssl !== null && this.config.ssl !== false) {
+      if (typeof this.config.ssl === 'boolean') {
+        // If SSL is just `true`, use it with rejectUnauthorized: false for self-signed certs
+        sslConfig = {
+          rejectUnauthorized: false,
+        }
+        console.log('[PostgreSQL Adapter] SSL enabled (boolean) - using rejectUnauthorized: false')
+      } else if (typeof this.config.ssl === 'object') {
+        // Use the provided SSL configuration object directly
+        sslConfig = this.config.ssl
+        console.log('[PostgreSQL Adapter] SSL enabled (object):', JSON.stringify(sslConfig))
+      }
+    } else {
+      console.log('[PostgreSQL Adapter] SSL disabled - value:', this.config.ssl)
+    }
+    console.log('[PostgreSQL Adapter] Final SSL config for pool:', JSON.stringify(sslConfig))
+
     this.pool = new Pool({
       host: this.config.host,
       port: this.config.port || 5432,
@@ -58,8 +79,8 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
       max: this.config.poolMax || 10,
       min: this.config.poolMin || 2,
       idleTimeoutMillis: this.config.idleTimeout || 30000,
-      connectionTimeoutMillis: this.config.connectionTimeout || 5000,
-      ssl: this.config.ssl,
+      connectionTimeoutMillis: this.config.connectionTimeout || 30000, // Increased for cloud databases
+      ssl: sslConfig,
     })
 
     // Test the connection
@@ -95,6 +116,20 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
         return { success: false, error: 'No password provided' }
       }
 
+      // Handle SSL configuration properly
+      let sslConfig: any = false
+      if (this.config.ssl !== undefined && this.config.ssl !== null && this.config.ssl !== false) {
+        if (typeof this.config.ssl === 'boolean') {
+          // If SSL is just `true`, use it with rejectUnauthorized: false for self-signed certs
+          sslConfig = {
+            rejectUnauthorized: false,
+          }
+        } else if (typeof this.config.ssl === 'object') {
+          // Use the provided SSL configuration object directly
+          sslConfig = this.config.ssl
+        }
+      }
+
       tempPool = new Pool({
         host: this.config.host,
         port: this.config.port || 5432,
@@ -102,7 +137,8 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
         user: this.config.username,
         password: password,
         max: 1,
-        connectionTimeoutMillis: 5000,
+        connectionTimeoutMillis: this.config.connectionTimeout || 30000, // Increased for cloud databases
+        ssl: sslConfig,
       })
 
       const client = await tempPool.connect()
@@ -407,10 +443,18 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
       const result = await client.query(sql)
       const executionTime = Date.now() - startTime
 
+      // Extract field metadata from query result
+      const fields = result.fields?.map((field: any) => ({
+        name: field.name,
+        dataType: this.mapPostgresTypeToGeneric(field.dataTypeID),
+        nullable: true, // PostgreSQL doesn't provide this in result metadata
+      })) || []
+
       return {
         rows: result.rows as T[],
         rowCount: result.rowCount || 0,
         executionTime,
+        fields,
       }
     } finally {
       // Reset timeout
@@ -419,6 +463,28 @@ export class PostgreSQLAdapter extends BaseDatabaseAdapter {
       }
       client.release()
     }
+  }
+
+  /**
+   * Map PostgreSQL OID types to generic type names
+   */
+  private mapPostgresTypeToGeneric(oid: number): string {
+    // Common PostgreSQL OID mappings
+    const typeMap: Record<number, string> = {
+      16: 'boolean',
+      20: 'bigint',
+      21: 'smallint',
+      23: 'integer',
+      25: 'text',
+      700: 'float',
+      701: 'double',
+      1043: 'varchar',
+      1082: 'date',
+      1114: 'timestamp',
+      1184: 'timestamptz',
+      1700: 'numeric',
+    }
+    return typeMap[oid] || 'text'
   }
 
   async executeWithTimeout<T = any>(sql: string, timeoutSeconds: number): Promise<QueryResult<T>> {
@@ -607,7 +673,17 @@ IMPORTANT JOIN INSTRUCTIONS:
 
   isConnectionError(error: any): boolean {
     const code = error.code
-    return ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', '08000', '08003', '08006'].includes(code)
+    return [
+      'ECONNREFUSED',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      'SELF_SIGNED_CERT_IN_CHAIN',
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      'DEPTH_ZERO_SELF_SIGNED_CERT',
+      '08000',
+      '08003',
+      '08006',
+    ].includes(code)
   }
 
   isTimeoutError(error: any): boolean {

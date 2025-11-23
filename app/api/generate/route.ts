@@ -46,11 +46,28 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    // Validate LLM provider configuration
+    const llmProvider = process.env.LLM_PROVIDER || 'anthropic'
+
+    if (llmProvider === 'anthropic' && !process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json(
-        { error: "ANTHROPIC_API_KEY not configured" },
+        { error: "ANTHROPIC_API_KEY not configured. Please check your environment variables." },
         { status: 500 }
       )
+    }
+
+    if (llmProvider === 'azure-openai') {
+      const missingVars = []
+      if (!process.env.AZURE_OPENAI_API_KEY) missingVars.push('AZURE_OPENAI_API_KEY')
+      if (!process.env.AZURE_OPENAI_ENDPOINT) missingVars.push('AZURE_OPENAI_ENDPOINT')
+      if (!process.env.AZURE_OPENAI_DEPLOYMENT_NAME) missingVars.push('AZURE_OPENAI_DEPLOYMENT_NAME')
+
+      if (missingVars.length > 0) {
+        return NextResponse.json(
+          { error: `Azure OpenAI configuration incomplete. Missing: ${missingVars.join(', ')}` },
+          { status: 500 }
+        )
+      }
     }
 
     const supabase = await createClient()

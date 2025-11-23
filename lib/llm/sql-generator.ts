@@ -2,12 +2,8 @@
  * SQL Generation with automatic retry on validation failures
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import { validateSQL, validateAgainstSchema, type SchemaInfo } from '@/lib/validation/sql-validator'
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+import { createLLMProvider, type LLMProvider } from '@/lib/llm/llm-provider'
 
 export interface GenerationOptions {
   query: string
@@ -53,8 +49,11 @@ export async function generateSQLWithRetry(
     // Build prompt with error feedback from previous attempts
     const prompt = buildPrompt(options, previousAttempts)
 
-    // Call LLM
-    const sql = await callClaudeAPI(prompt)
+    // Call LLM (supports multiple providers)
+    const sql = await callLLMAPI(prompt)
+
+    // Log generated SQL for debugging
+    console.log(`[SQL Generator] Attempt ${attempts} - Generated SQL:`, sql)
 
     // Validate syntax - use adapter validator if provided, otherwise use generic validator
     const syntaxValidation = options.validator
@@ -80,6 +79,12 @@ export async function generateSQLWithRetry(
     const schemaValidation = validateAgainstSchema(syntaxValidation, options.schema)
 
     if (!schemaValidation.valid) {
+      // DEBUG: Log schema structure to diagnose validation issues
+      console.log('[SQL Generator] Schema validation failed')
+      console.log('  Available tables in schema:', Object.keys(options.schema.tables || {}))
+      console.log('  Tables extracted from SQL:', syntaxValidation.tables)
+      console.log('  Validation errors:', schemaValidation.errors)
+
       // Schema validation error - retry
       previousAttempts.push({
         sql,
@@ -187,31 +192,23 @@ IMPORTANT JOIN INSTRUCTIONS:
 }
 
 /**
- * Call Claude API
+ * Call LLM API (supports multiple providers)
  */
-async function callClaudeAPI(prompt: string): Promise<string> {
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-5-20250929',
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
-  })
+async function callLLMAPI(prompt: string, llmProvider?: LLMProvider): Promise<string> {
+  // Use provided provider or create a new one
+  const provider = llmProvider || createLLMProvider()
 
-  // Extract SQL from response
-  let sql = ''
-  for (const block of message.content) {
-    if (block.type === 'text') {
-      sql = block.text.trim()
-      break
-    }
-  }
+  // Generate completion
+  const response = await provider.generateCompletion(prompt)
 
-  // Clean up the SQL
-  sql = sql.replace(/```sql\n?/g, '').replace(/```\n?/g, '').trim()
+  let sql = response.content
+
+  // Clean up the SQL (remove code blocks, backticks, etc.)
+  sql = sql
+    .replace(/```sql\n?/g, '')
+    .replace(/```\n?/g, '')
+    .replace(/`/g, '')
+    .trim()
 
   // Remove trailing semicolon if present
   if (sql.endsWith(';')) {

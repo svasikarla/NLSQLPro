@@ -47,3 +47,25 @@ coverage/
 .cache/
 .parcel-cache/
 .eslintcache
+
+# Temporary files and backups
+*.backup
+*.bak
+*.tmp
+*.log
+Thumbs.db
+
+# Exclude auto-generated documentation (keep only README.md and CLAUDE.md)
+*_SUMMARY.md
+*_GUIDE.md
+*_FIX*.md
+*_DEBUG.md
+*_EXAMPLES.md
+SPRINT_*.md
+DEPLOYMENT_*.md
+MIGRATION_*.md
+IMPLEMENTATION_*.md
+ARCHITECTURE_*.md
+CONNECTION_*.md
+VISUALIZATION_*.md
+SSL_*.md

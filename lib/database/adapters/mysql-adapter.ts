@@ -58,7 +58,7 @@ export class MySQLAdapter extends BaseDatabaseAdapter {
       connectionLimit: this.config.poolMax || 10,
       waitForConnections: true,
       queueLimit: 0,
-      connectTimeout: this.config.connectionTimeout || 10000,
+      connectTimeout: this.config.connectionTimeout || 30000, // Increased for cloud databases
       idleTimeout: this.config.idleTimeout || 30000,
       ssl: this.config.ssl === true ? {} : this.config.ssl || undefined,
     })
@@ -103,7 +103,7 @@ export class MySQLAdapter extends BaseDatabaseAdapter {
         user: this.config.username,
         password: password,
         connectionLimit: 1,
-        connectTimeout: 5000,
+        connectTimeout: this.config.connectionTimeout || 30000, // Increased for cloud databases
       })
 
       const connection = await tempPool.getConnection()

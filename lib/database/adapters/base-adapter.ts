@@ -262,15 +262,19 @@ export abstract class BaseDatabaseAdapter {
    */
   protected extractTableNames(sql: string): string[] {
     const tables: string[] = []
-    const fromRegex = /from\s+([a-z_][a-z0-9_]*)/gi
-    const joinRegex = /join\s+([a-z_][a-z0-9_]*)/gi
+    // Updated regex to handle schema-qualified table names (e.g., public.users, dbo.customers)
+    // Matches: tablename OR schema.tablename
+    const fromRegex = /from\s+(?:([a-z_][a-z0-9_]*)\.)?\s*([a-z_][a-z0-9_]*)/gi
+    const joinRegex = /join\s+(?:([a-z_][a-z0-9_]*)\.)?\s*([a-z_][a-z0-9_]*)/gi
 
     let match
     while ((match = fromRegex.exec(sql)) !== null) {
-      tables.push(match[1])
+      // match[2] is the table name (with or without schema qualifier)
+      // If match[1] exists, it's the schema name (e.g., "public")
+      tables.push(match[2]) // Only store the table name, not schema.table
     }
     while ((match = joinRegex.exec(sql)) !== null) {
-      tables.push(match[1])
+      tables.push(match[2])
     }
 
     return [...new Set(tables)] // Remove duplicates

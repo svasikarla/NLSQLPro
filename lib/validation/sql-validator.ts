@@ -52,15 +52,21 @@ export function validateSQL(sql: string, dbType: string = 'postgresql'): Validat
         continue
       }
 
-      // Extract tables
+      // Extract tables (normalize to remove schema qualifiers)
+      const normalizeTableName = (tableName: string): string => {
+        // Remove schema qualifier if present (e.g., "public.users" -> "users")
+        const parts = tableName.split('.')
+        return parts.length > 1 ? parts[parts.length - 1] : tableName
+      }
+
       if (ast.from) {
         for (const from of ast.from) {
           if (from.table) {
-            tables.push(from.table)
+            tables.push(normalizeTableName(from.table))
           }
           // Handle joins
           if (from.join) {
-            if (from.join.table) tables.push(from.join.table)
+            if (from.join.table) tables.push(normalizeTableName(from.join.table))
           }
         }
       }
@@ -130,10 +136,26 @@ export function validateAgainstSchema(
     return { valid: false, errors: validation.errors, warnings: validation.warnings }
   }
 
+  // Helper function to normalize table names (strip schema qualifiers like "public.")
+  const normalizeTableName = (tableName: string): string => {
+    // Remove schema qualifier if present (e.g., "public.users" -> "users")
+    const parts = tableName.split('.')
+    return parts.length > 1 ? parts[parts.length - 1] : tableName
+  }
+
   // Check tables exist
   for (const table of validation.tables) {
-    if (!schema.tables[table]) {
-      errors.push(`Table "${table}" does not exist in schema`)
+    const normalizedTable = normalizeTableName(table)
+
+    // Check both qualified (public.tablename) and unqualified (tablename) variants
+    // because schema keys might be stored either way depending on the database adapter
+    const existsAsSimple = schema.tables[normalizedTable] !== undefined
+    const existsAsQualified = Object.keys(schema.tables).some(key =>
+      normalizeTableName(key) === normalizedTable
+    )
+
+    if (!existsAsSimple && !existsAsQualified) {
+      errors.push(`Table "${normalizedTable}" does not exist in schema`)
     }
   }
 
@@ -142,7 +164,7 @@ export function validateAgainstSchema(
   if (validation.columns.length > 0 && validation.columns[0] !== '*') {
     for (const col of validation.columns) {
       let found = false
-      for (const [tableName, columns] of Object.entries(schema.tables)) {
+      for (const [_tableName, columns] of Object.entries(schema.tables)) {
         if (columns.some(c => c.column_name === col)) {
           found = true
           break

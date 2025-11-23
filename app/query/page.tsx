@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card"
 import { SchemaViewer } from "@/components/schema-viewer"
 import { ErrorDisplay } from "@/components/error-display"
 import { QueryHistory } from "@/components/query-history"
+import { QueryResultsViewer } from "@/components/query-results-viewer"
 import { useQueryHistory } from "@/hooks/use-query-history"
 import { createClient } from "@/lib/supabase/client"
 
@@ -31,6 +32,11 @@ export default function QueryPage() {
   const [editedSQL, setEditedSQL] = useState("")
   const [isEditing, setIsEditing] = useState(false)
   const [queryResults, setQueryResults] = useState<any[] | null>(null)
+  const [executionTime, setExecutionTime] = useState<number | undefined>(undefined)
+  const [resultFields, setResultFields] = useState<any[] | undefined>(undefined)
+  const [rowCount, setRowCount] = useState<number | undefined>(undefined)
+  const [schemaKnowledge, setSchemaKnowledge] = useState<any>(null)
+  const [primaryTable, setPrimaryTable] = useState<string | undefined>(undefined)
   const [error, setError] = useState("")
   const [errorContext, setErrorContext] = useState<"generation" | "execution" | "schema">("generation")
   const [copied, setCopied] = useState(false)
@@ -119,6 +125,11 @@ export default function QueryPage() {
     setIsExecuting(true)
     setError("")
     setQueryResults(null)
+    setExecutionTime(undefined)
+    setResultFields(undefined)
+    setRowCount(undefined)
+    setSchemaKnowledge(null)
+    setPrimaryTable(undefined)
 
     try {
       const response = await fetch("/api/execute", {
@@ -134,6 +145,32 @@ export default function QueryPage() {
       }
 
       setQueryResults(data.results)
+      setExecutionTime(data.executionTime)
+      setResultFields(data.fields)
+      setRowCount(data.rowCount)
+
+      // NEW: Capture schema knowledge for V2 visualizations
+      if (data.schemaKnowledge) {
+        // Convert serialized schema knowledge back to Map structure
+        const schemaKnowledgeWithMaps = {
+          connectionId: data.schemaKnowledge.connectionId,
+          tables: new Map(
+            data.schemaKnowledge.tables.map((table: any) => [
+              table.name,
+              table.columns
+            ])
+          ),
+          relationships: data.schemaKnowledge.relationships,
+          lastUpdated: new Date(data.schemaKnowledge.lastUpdated)
+        }
+        setSchemaKnowledge(schemaKnowledgeWithMaps)
+        console.log('[Query Page] Schema knowledge loaded:', schemaKnowledgeWithMaps)
+      }
+
+      if (data.primaryTable) {
+        setPrimaryTable(data.primaryTable)
+        console.log('[Query Page] Primary table detected:', data.primaryTable)
+      }
     } catch (err: any) {
       setError(err.message)
       setErrorContext("execution")
@@ -430,65 +467,22 @@ export default function QueryPage() {
           </Card>
         </div>
 
-        {/* Results Section */}
+        {/* Results Section - Enhanced with V2 System */}
         {queryResults && queryResults.length > 0 && (
-          <Card className="mt-8 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">
-                Query Results ({queryResults.length} rows)
-              </h3>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportCSV}
-                  className="gap-2"
-                >
-                  <Download size={16} />
-                  Export CSV
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportJSON}
-                  className="gap-2"
-                >
-                  <Download size={16} />
-                  Export JSON
-                </Button>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    {Object.keys(queryResults[0]).map((key) => (
-                      <th key={key} className="text-left p-3 font-semibold">
-                        {key}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {queryResults.map((row, idx) => (
-                    <tr key={idx} className="border-b border-border/50 hover:bg-muted/30">
-                      {Object.values(row).map((value: any, cellIdx) => (
-                        <td key={cellIdx} className="p-3">
-                          {value === null ? (
-                            <span className="text-muted-foreground italic">null</span>
-                          ) : typeof value === "object" ? (
-                            JSON.stringify(value)
-                          ) : (
-                            String(value)
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <div className="mt-8">
+            <QueryResultsViewer
+              results={queryResults}
+              sql={editedSQL || generatedSQL}
+              fields={resultFields}
+              rowCount={rowCount}
+              executionTime={executionTime}
+              onExportCSV={handleExportCSV}
+              onExportJSON={handleExportJSON}
+              schemaKnowledge={schemaKnowledge}
+              tableName={primaryTable}
+              useSchemaAwareness={true}
+            />
+          </div>
         )}
       </main>
     </div>
