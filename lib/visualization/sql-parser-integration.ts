@@ -33,6 +33,7 @@ export interface ParsedSQLQuery {
   orderByColumns: string[]
   groupByColumns: string[]
   isTimeSeriesOrdered: boolean
+  primaryTable?: string // The main table being queried
 
   // Raw AST for advanced use cases
   ast?: AST | AST[]
@@ -64,7 +65,8 @@ export function parseSQL(sql: string): ParsedSQLQuery {
     aggregateFunctions: [],
     orderByColumns: [],
     groupByColumns: [],
-    isTimeSeriesOrdered: false
+    isTimeSeriesOrdered: false,
+    primaryTable: undefined
   }
 
   try {
@@ -111,6 +113,12 @@ export function parseSQL(sql: string): ParsedSQLQuery {
     const hasSubquery = detectSubqueries(selectStmt)
     const hasCTE = !!selectStmt.with && selectStmt.with.length > 0
 
+    // Determine primary table (first table in FROM clause)
+    let primaryTable: string | undefined = undefined
+    if (tables.length > 0) {
+      primaryTable = tables[0]
+    }
+
     return {
       isValid: true,
       type: 'SELECT',
@@ -129,6 +137,7 @@ export function parseSQL(sql: string): ParsedSQLQuery {
       orderByColumns,
       groupByColumns,
       isTimeSeriesOrdered,
+      primaryTable,
       ast: statement
     }
   } catch (error: any) {
