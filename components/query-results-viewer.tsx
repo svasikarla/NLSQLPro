@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Download, BarChart3, LineChart, PieChart as PieChartIcon, Table as TableIcon, Loader2, Info, ScatterChart as ScatterChartIcon } from 'lucide-react'
+import { Download, BarChart3, LineChart, PieChart as PieChartIcon, Table as TableIcon, Loader2, Info, ScatterChart as ScatterChartIcon, Activity } from 'lucide-react'
 import { FieldInfo } from '@/lib/database/types/database'
 import { ChartType } from '@/lib/visualization/chart-detector'
 import { detectBestVisualizationV2, VisualizationAnalysisV2, ChartRecommendationV2 } from '@/lib/visualization/chart-detector-v2'
@@ -19,6 +19,7 @@ import { BarChartView } from '@/components/charts/bar-chart-view'
 import { LineChartView } from '@/components/charts/line-chart-view'
 import { PieChartView } from '@/components/charts/pie-chart-view'
 import { ScatterChartView } from '@/components/charts/scatter-chart-view'
+import { KpiCardView } from '@/components/charts/kpi-card-view'
 import { TableView } from '@/components/charts/table-view'
 import { SchemaKnowledge } from '@/lib/visualization/schema-knowledge'
 import { analyzeQueryResultsV2, DataStatisticsV2 } from '@/lib/visualization/data-analyzer-v2'
@@ -136,6 +137,8 @@ export function QueryResultsViewer({
         return <ScatterChartIcon className="h-4 w-4" />
       case 'table':
         return <TableIcon className="h-4 w-4" />
+      case 'kpi':
+        return <Activity className="h-4 w-4" />
       default:
         return <BarChart3 className="h-4 w-4" />
     }
@@ -174,6 +177,8 @@ export function QueryResultsViewer({
           return <PieChartView data={results} config={config} />
         case 'scatter':
           return <ScatterChartView data={results} config={config} />
+        case 'kpi':
+          return <KpiCardView data={results} config={config} />
         case 'table':
           return <TableView data={results} />
         default:
@@ -417,13 +422,12 @@ export function QueryResultsViewer({
               {insights.insights.slice(0, 5).map((insight, idx) => (
                 <div
                   key={idx}
-                  className={`p-3 rounded-lg border text-sm ${
-                    insight.severity === 'critical'
+                  className={`p-3 rounded-lg border text-sm ${insight.severity === 'critical'
                       ? 'border-destructive/50 bg-destructive/5'
                       : insight.severity === 'warning'
-                      ? 'border-yellow-500/50 bg-yellow-500/5'
-                      : 'border-blue-500/50 bg-blue-500/5'
-                  }`}
+                        ? 'border-yellow-500/50 bg-yellow-500/5'
+                        : 'border-blue-500/50 bg-blue-500/5'
+                    }`}
                 >
                   <div className="flex items-start gap-2">
                     <Badge
@@ -431,8 +435,8 @@ export function QueryResultsViewer({
                         insight.severity === 'critical'
                           ? 'destructive'
                           : insight.severity === 'warning'
-                          ? 'outline'
-                          : 'secondary'
+                            ? 'outline'
+                            : 'secondary'
                       }
                       className="text-xs"
                     >

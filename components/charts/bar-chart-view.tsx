@@ -8,6 +8,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { ChartConfig } from '@/lib/visualization/chart-detector'
+import { formatAxisLabel, formatValue } from '@/lib/visualization/formatters'
 
 interface BarChartViewProps {
   data: any[]
@@ -17,11 +18,11 @@ interface BarChartViewProps {
 
 // Chart theme colors
 const CHART_COLORS = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
 ]
 
 export function BarChartView({ data, config, className }: BarChartViewProps) {
@@ -66,10 +67,8 @@ export function BarChartView({ data, config, className }: BarChartViewProps) {
   })
 
   // Format numbers in tooltip
-  const formatValue = (value: number) => {
-    if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`
-    if (value >= 1000) return `${(value / 1000).toFixed(2)}K`
-    return value.toLocaleString()
+  const formatTooltipValue = (value: number) => {
+    return formatValue(value, config.yAxisSemanticType)
   }
 
   if (orientation === 'horizontal') {
@@ -81,7 +80,7 @@ export function BarChartView({ data, config, className }: BarChartViewProps) {
           margin={{ top: 20, right: 30, left: 100, bottom: 20 }}
         >
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-          <XAxis type="number" className="text-xs" tickFormatter={formatValue} />
+          <XAxis type="number" className="text-xs" tickFormatter={(val) => formatAxisLabel(val, config.yAxisSemanticType)} />
           <YAxis type="category" dataKey={xAxis} className="text-xs" width={90} />
           <ChartTooltip content={<ChartTooltipContent />} />
           {yAxes.length > 1 && <Legend />}
@@ -109,7 +108,7 @@ export function BarChartView({ data, config, className }: BarChartViewProps) {
           textAnchor="end"
           height={80}
         />
-        <YAxis className="text-xs" tickFormatter={formatValue} />
+        <YAxis className="text-xs" tickFormatter={(val) => formatAxisLabel(val, config.yAxisSemanticType)} />
         <ChartTooltip content={<ChartTooltipContent />} />
         {yAxes.length > 1 && <Legend />}
         {yAxes.map((axis, index) => (

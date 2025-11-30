@@ -15,7 +15,7 @@ import { DataStatisticsV2, ColumnMetadataV2, analyzeSQLPattern, SQLFeatures } fr
 import { FieldInfo } from '@/lib/database/types/database'
 import { SchemaKnowledge } from './schema-knowledge'
 
-export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'table'
+export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'table' | 'kpi'
 
 /**
  * Enhanced chart recommendation with scoring breakdown
@@ -52,6 +52,11 @@ export interface ChartConfigV2 {
   // NEW: Semantic hints
   xAxisSemanticType?: string
   yAxisSemanticType?: string
+  // KPI specific
+  title?: string
+  metric?: string
+  trend?: number
+  semanticType?: string
 }
 
 export interface VisualizationAnalysisV2 {
@@ -85,7 +90,7 @@ export function detectBestVisualizationV2(
   // Always add table as fallback
   recommendations.push({
     type: 'table',
-    score: 100,
+    score: 10, // Low score so it's only picked if no other good visualizations exist
     confidence: 'high',
     reasoning: {
       positive: ['Always available for raw data inspection'],
@@ -140,6 +145,10 @@ function generateScoredRecommendations(
   // Pattern 4: Correlation (Scatter plot)
   const scatterRec = scoreScatterPlot(results, dataStats, sqlFeatures)
   if (scatterRec && scatterRec.score >= 40) recommendations.push(scatterRec)
+
+  // Pattern 5: Single Value (KPI)
+  const kpiRec = scoreKpiView(results, dataStats, sqlFeatures)
+  if (kpiRec && kpiRec.score >= 50) recommendations.push(kpiRec)
 
   return recommendations
 }
@@ -597,13 +606,13 @@ function scoreScatterPlot(
     sqlContext += 15
     positive.push('Raw data (no aggregation) - shows individual points')
   } else {
-    sqlContext += 5
+    sqlContext -= 20 // Penalize aggregation for scatter
     negative.push('Aggregated data may hide correlation patterns')
   }
 
   if (sqlFeatures.hasGroupBy) {
-    sqlContext += 5
-    positive.push('Grouped data - color by group possible')
+    sqlContext -= 10 // Penalize Group By for scatter
+    negative.push('Grouped data is usually better for bar charts')
   }
 
   // DATA QUALITY (0-10 points)
@@ -643,6 +652,90 @@ function scoreScatterPlot(
 
   return {
     type: 'scatter',
+    score,
+    confidence,
+    reasoning: { positive, negative, alternatives },
+    config,
+    insights,
+    scoreBreakdown: { dataFit, semanticAlignment, sqlContext, dataQuality }
+  }
+}
+
+/**
+ * Score KPI View
+ * Best for: Single value metrics (e.g. Total Revenue, Count)
+ */
+function scoreKpiView(
+  results: any[],
+  dataStats: DataStatisticsV2,
+  sqlFeatures: SQLFeatures
+): ChartRecommendationV2 | null {
+  const positive: string[] = []
+  const negative: string[] = []
+  const alternatives: string[] = []
+
+  let dataFit = 0
+  let semanticAlignment = 0
+  let sqlContext = 0
+  let dataQuality = 0
+
+  // Requirement: 1 row, 1 numeric column (or just 1 column total)
+  if (results.length !== 1) {
+    return null
+  }
+
+  const numericCol = dataStats.numericColumns[0]
+  const anyCol = dataStats.numericColumns[0] || dataStats.textColumns[0] || dataStats.temporalColumns[0]
+
+  if (!anyCol) return null
+
+  // DATA FIT (0-40 points)
+  if (results.length === 1 && dataStats.totalColumns === 1) {
+    dataFit += 100 // Boost to ensure it beats table view (usually 100)
+    positive.push('Single value result - perfect for KPI card')
+  } else if (results.length === 1 && dataStats.numericColumns.length === 1) {
+    dataFit += 80
+    positive.push('Single row with one metric')
+  } else {
+    return null
+  }
+
+  // SEMANTIC ALIGNMENT (0-30 points)
+  if (numericCol?.semanticType === 'currency' || numericCol?.semanticType === 'percentage') {
+    semanticAlignment += 30
+    positive.push(`Metric is ${numericCol.semanticType}`)
+  } else if (numericCol) {
+    semanticAlignment += 20
+    positive.push('Numeric metric')
+  }
+
+  // SQL CONTEXT (0-20 points)
+  if (sqlFeatures.hasAggregation && !sqlFeatures.hasGroupBy) {
+    sqlContext += 20
+    positive.push('Aggregation without grouping - returns single summary value')
+  }
+
+  // DATA QUALITY (0-10 points)
+  if (anyCol.nullCount === 0) {
+    dataQuality += 10
+  }
+
+  const score = dataFit + semanticAlignment + sqlContext + dataQuality
+  const confidence = score >= 80 ? 'high' : 'medium'
+
+  const config: ChartConfigV2 = {
+    title: anyCol.name,
+    metric: anyCol.name,
+    semanticType: anyCol.semanticType
+  }
+
+  const insights = {
+    title: 'Key Performance Indicator',
+    description: `Summary metric for ${anyCol.name}`
+  }
+
+  return {
+    type: 'kpi',
     score,
     confidence,
     reasoning: { positive, negative, alternatives },

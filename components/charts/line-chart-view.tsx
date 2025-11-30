@@ -8,6 +8,7 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { ChartConfig } from '@/lib/visualization/chart-detector'
+import { formatAxisLabel, formatValue } from '@/lib/visualization/formatters'
 import { format } from 'date-fns'
 
 interface LineChartViewProps {
@@ -18,11 +19,11 @@ interface LineChartViewProps {
 
 // Chart theme colors
 const CHART_COLORS = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
 ]
 
 export function LineChartView({ data, config, className }: LineChartViewProps) {
@@ -71,20 +72,13 @@ export function LineChartView({ data, config, className }: LineChartViewProps) {
   })
 
   // Format numbers in tooltip
-  const formatValue = (value: number) => {
-    if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`
-    if (value >= 1000) return `${(value / 1000).toFixed(2)}K`
-    return value.toLocaleString()
+  const formatTooltipValue = (value: number) => {
+    return formatValue(value, config.yAxisSemanticType)
   }
 
   // Format X axis labels (dates or regular values)
   const formatXAxis = (value: any) => {
-    const sample = formattedData[0]?.[xAxis]
-    if (typeof sample === 'number' && sample > 1000000000000) {
-      // Likely a timestamp
-      return format(new Date(value), 'MMM dd')
-    }
-    return String(value)
+    return formatAxisLabel(value, config.xAxisSemanticType)
   }
 
   return (
@@ -96,7 +90,7 @@ export function LineChartView({ data, config, className }: LineChartViewProps) {
           className="text-xs"
           tickFormatter={formatXAxis}
         />
-        <YAxis className="text-xs" tickFormatter={formatValue} />
+        <YAxis className="text-xs" tickFormatter={(val) => formatAxisLabel(val, config.yAxisSemanticType)} />
         <ChartTooltip
           content={<ChartTooltipContent />}
           labelFormatter={(label) => {

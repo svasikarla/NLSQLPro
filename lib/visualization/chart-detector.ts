@@ -6,7 +6,7 @@
 import { DataStatistics, SQLFeatures, analyzeQueryResults, analyzeSQLPattern, isChronologicallyOrdered } from './data-analyzer'
 import { FieldInfo } from '@/lib/database/types/database'
 
-export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'table'
+export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'table' | 'kpi'
 
 export interface ChartRecommendation {
   type: ChartType
@@ -21,6 +21,13 @@ export interface ChartConfig {
   colorBy?: string
   orientation?: 'horizontal' | 'vertical'
   stacked?: boolean
+  // New fields for V2 compatibility
+  title?: string
+  metric?: string
+  trend?: number
+  semanticType?: string
+  xAxisSemanticType?: string
+  yAxisSemanticType?: string
 }
 
 export interface VisualizationAnalysis {

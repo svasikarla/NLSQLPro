@@ -24,11 +24,11 @@
   --border: oklch(0.20 0.04 265);
   --input: oklch(0.18 0.03 265);
   --ring: oklch(0.60 0.25 265);
-  --chart-1: oklch(0.60 0.25 265);
-  --chart-2: oklch(0.70 0.22 200);
-  --chart-3: oklch(0.65 0.28 285);
-  --chart-4: oklch(0.55 0.26 250);
-  --chart-5: oklch(0.68 0.24 305);
+  --chart-1: oklch(0.65 0.25 260); /* Vibrant Blue */
+  --chart-2: oklch(0.70 0.20 150); /* Bright Green */
+  --chart-3: oklch(0.75 0.18 40);  /* Warm Orange */
+  --chart-4: oklch(0.60 0.25 290); /* Deep Purple */
+  --chart-5: oklch(0.65 0.22 340); /* Hot Pink */
   --radius: 0.75rem;
   --sidebar: oklch(0.13 0.03 265);
   --sidebar-foreground: oklch(0.98 0.01 265);
@@ -60,11 +60,11 @@
   --border: oklch(0.25 0 0);
   --input: oklch(0.2 0 0);
   --ring: oklch(0.55 0.24 264);
-  --chart-1: oklch(0.55 0.24 264);
-  --chart-2: oklch(0.7 0.2 184);
-  --chart-3: oklch(0.6 0.22 200);
-  --chart-4: oklch(0.5 0.25 270);
-  --chart-5: oklch(0.65 0.23 260);
+  --chart-1: oklch(0.65 0.25 260);
+  --chart-2: oklch(0.70 0.20 150);
+  --chart-3: oklch(0.75 0.18 40);
+  --chart-4: oklch(0.60 0.25 290);
+  --chart-5: oklch(0.65 0.22 340);
   --sidebar: oklch(0.16 0 0);
   --sidebar-foreground: oklch(0.95 0 0);
   --sidebar-primary: oklch(0.55 0.24 264);

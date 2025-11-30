@@ -114,9 +114,9 @@ export function analyzeQueryResultsV2(
   const schemaBasedDetections = columnMetadata.filter(c => c.detectionSource === 'schema').length
   const schemaConfidence =
     !schemaKnowledge ? 'none' :
-    schemaBasedDetections === columns.length ? 'high' :
-    schemaBasedDetections > columns.length / 2 ? 'medium' :
-    'low'
+      schemaBasedDetections === columns.length ? 'high' :
+        schemaBasedDetections > columns.length / 2 ? 'medium' :
+          'low'
 
   return {
     totalRows: results.length,
@@ -252,7 +252,7 @@ function buildMetadataFromFieldInfo(
   // Numeric types
   if (
     ['int', 'integer', 'bigint', 'smallint', 'tinyint', 'serial', 'bigserial',
-     'decimal', 'numeric', 'float', 'double', 'real', 'money'].some((t) => dbType.includes(t))
+      'decimal', 'numeric', 'float', 'double', 'real', 'money'].some((t) => dbType.includes(t))
   ) {
     const numericValues = values.map((v) => Number(v))
     return {
@@ -330,10 +330,45 @@ function buildMetadataFromValueInference(
   // Check if all values are numbers
   if (values.every((v) => typeof v === 'number' || (!isNaN(Number(v)) && String(v).trim() !== ''))) {
     const numericValues = values.map((v) => Number(v))
+    // Check for Year (integer between 1950 and 2050)
+    const isYear = numericValues.every(v => Number.isInteger(v) && v >= 1950 && v <= 2050)
+    if (isYear) {
+      reasoning.push('Values look like years (1950-2050)')
+      return {
+        name: columnName,
+        type: 'temporal',
+        semanticType: 'temporal', // Treat as temporal
+        distinctCount,
+        nullCount,
+        min: new Date(Math.min(...numericValues), 0, 1), // Jan 1st of min year
+        max: new Date(Math.max(...numericValues), 0, 1), // Jan 1st of max year
+        detectionSource: 'value_inference',
+        confidence: 'medium',
+        reasoning,
+      }
+    }
+
+    // Check for ID columns (numeric but high cardinality and specific naming)
+    const isId = columnName.toLowerCase().endsWith('_id') || columnName.toLowerCase().endsWith('id')
+    if (isId && distinctCount === values.length) {
+      reasoning.push('Column name ends in ID and values are unique')
+      return {
+        name: columnName,
+        type: 'text', // Treat IDs as text to prevent summing
+        semanticType: 'identifier',
+        distinctCount,
+        nullCount,
+        detectionSource: 'value_inference',
+        confidence: 'medium',
+        reasoning,
+      }
+    }
+
     reasoning.push('All values are numeric')
     return {
       name: columnName,
       type: 'numeric',
+      semanticType: Number.isInteger(Math.min(...numericValues)) && Number.isInteger(Math.max(...numericValues)) && numericValues.every(Number.isInteger) ? 'numeric_discrete' : 'numeric_continuous',
       distinctCount,
       nullCount,
       min: Math.min(...numericValues),
@@ -388,16 +423,38 @@ function buildMetadataFromValueInference(
 
   // Check distinctness for categorical vs text
   const distinctRatio = distinctCount / values.length
+  const avgLength = values.reduce((sum, v) => sum + String(v).length, 0) / values.length
 
   // If less than 30% distinct and ≤ 50 unique values, treat as categorical
-  if (distinctRatio <= 0.3 && distinctCount <= 50) {
-    reasoning.push(`Low distinct ratio (${(distinctRatio * 100).toFixed(1)}%) suggests categorical`)
+  // OR if absolute distinct count is small (≤ 30) and text is short (likely labels), treat as categorical
+  if ((distinctRatio <= 0.3 && distinctCount <= 50) || (distinctCount <= 30 && avgLength <= 50)) {
+    reasoning.push(`Low distinct count (${distinctCount}) or ratio (${(distinctRatio * 100).toFixed(1)}%) suggests categorical`)
     return {
       name: columnName,
       type: 'categorical',
+      semanticType: 'categorical', // Explicitly set semantic type
       distinctCount,
       nullCount,
       sampleValues: Array.from(new Set(values)).slice(0, 10),
+      detectionSource: 'value_inference',
+      confidence: 'medium',
+      reasoning,
+    }
+  }
+
+  // Check for Currency Strings (e.g. "$1,234.56")
+  const currencyRegex = /^\$?\s?[\d,]+(\.\d{2})?$/
+  if (values.every(v => typeof v === 'string' && currencyRegex.test(v.trim()))) {
+    const numericValues = values.map(v => parseFloat(String(v).replace(/[$,\s]/g, '')))
+    reasoning.push('Values look like currency strings')
+    return {
+      name: columnName,
+      type: 'numeric',
+      semanticType: 'currency',
+      distinctCount,
+      nullCount,
+      min: Math.min(...numericValues),
+      max: Math.max(...numericValues),
       detectionSource: 'value_inference',
       confidence: 'medium',
       reasoning,

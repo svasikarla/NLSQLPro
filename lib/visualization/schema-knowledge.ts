@@ -129,7 +129,7 @@ export function inferSemanticType(column: ColumnMetadata, columnName: string): {
 
   // Currency
   if (lowerName.includes('price') || lowerName.includes('cost') || lowerName.includes('amount') ||
-      lowerName.includes('revenue') || lowerName.includes('salary') || lowerName === 'total') {
+    lowerName.includes('revenue') || lowerName.includes('salary') || lowerName === 'total') {
     if (['decimal', 'numeric', 'money'].some(t => lowerType.includes(t))) {
       reasoning.push('Column name and decimal type suggest currency')
       return { type: 'currency', confidence: 'high', reasoning }
@@ -152,14 +152,14 @@ export function inferSemanticType(column: ColumnMetadata, columnName: string): {
 
   // Categorical (status, type, category, enum)
   if (lowerName.includes('status') || lowerName.includes('type') || lowerName.includes('category') ||
-      lowerName.includes('kind') || lowerName === 'state' || lowerType.includes('enum')) {
+    lowerName.includes('kind') || lowerName === 'state' || lowerType.includes('enum')) {
     reasoning.push('Column name or enum type suggests categorical data')
     return { type: 'categorical', confidence: 'high', reasoning }
   }
 
   // ID fields (not primary key)
   if (lowerName.endsWith('_id') || lowerName.startsWith('id_') || lowerName === 'id' ||
-      lowerName.includes('uuid') || column.is_unique) {
+    lowerName.includes('uuid') || column.is_unique) {
     reasoning.push('Column name or unique constraint suggests identifier')
     return { type: 'identifier', confidence: 'high', reasoning }
   }
@@ -168,7 +168,7 @@ export function inferSemanticType(column: ColumnMetadata, columnName: string): {
   if (['int', 'integer', 'bigint', 'smallint', 'serial', 'bigserial'].some(t => lowerType.includes(t))) {
     // Discrete numeric (counts, quantities)
     if (lowerName.includes('count') || lowerName.includes('quantity') || lowerName.includes('num') ||
-        lowerName.includes('total') || lowerName.includes('age')) {
+      lowerName.includes('total') || lowerName.includes('age')) {
       reasoning.push('Integer type with count/quantity name pattern')
       return { type: 'numeric_discrete', confidence: 'high', reasoning }
     }
@@ -185,7 +185,7 @@ export function inferSemanticType(column: ColumnMetadata, columnName: string): {
   if (['varchar', 'char', 'text', 'string'].some(t => lowerType.includes(t))) {
     // Long text (descriptions, notes, comments)
     if (lowerName.includes('description') || lowerName.includes('note') || lowerName.includes('comment') ||
-        lowerName.includes('bio') || lowerName.includes('details') || lowerType.includes('text')) {
+      lowerName.includes('bio') || lowerName.includes('details') || lowerType.includes('text')) {
       reasoning.push('Text type with description/note name pattern')
       return { type: 'text_long', confidence: 'high', reasoning }
     }
@@ -250,7 +250,7 @@ export function estimateCardinality(column: ColumnMetadata, columnName: string):
 
   // CATEGORICAL name patterns → low cardinality
   if (lowerName.includes('status') || lowerName.includes('type') || lowerName.includes('category') ||
-      lowerName.includes('kind') || lowerName === 'state') {
+    lowerName.includes('kind') || lowerName === 'state') {
     reasoning.push('Categorical name pattern suggests low cardinality')
     return { estimate: 'low', reasoning }
   }
@@ -296,6 +296,11 @@ export function buildSchemaKnowledge(
 
   // Process each table
   for (const [tableName, columns] of Object.entries(schemaInfo.tables)) {
+    if (!Array.isArray(columns)) {
+      console.warn(`[Schema Knowledge] Invalid columns for table ${tableName}:`, columns)
+      continue
+    }
+
     const enrichedColumns: EnrichedColumnMetadata[] = []
 
     for (const column of columns) {
