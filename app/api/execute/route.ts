@@ -7,7 +7,11 @@ import {
   getRateLimitHeaders,
   logRateLimitEvent,
 } from "@/lib/ratelimit/rate-limiter"
-import { getCachedSchema } from "@/lib/cache/schema-cache"
+import {
+  logQueryHistory,
+  updateQueryHistory,
+  findPendingQuery
+} from "@/lib/logging/audit-logger"
 import { getOrBuildSchemaKnowledge } from "@/lib/visualization/schema-knowledge-manager"
 import { parseSQL } from "@/lib/visualization/sql-parser-integration"
 
@@ -61,6 +65,20 @@ export async function POST(request: Request) {
       )
     }
 
+    // AUDIT LOGGING: Find pending query or create new entry
+    let historyId = await findPendingQuery(user.id, sql)
+
+    if (!historyId) {
+      // Create a new entry for direct execution
+      historyId = await logQueryHistory({
+        userId: user.id,
+        connectionId: activeConnection.id,
+        nlQuery: "Direct Execution", // We don't have the original NL query here
+        generatedSql: sql,
+        executed: false
+      })
+    }
+
     // Get database adapter (uses cached adapter if available)
     const adapter = await getConnectionAdapter(user.id, activeConnection.id)
 
@@ -72,70 +90,57 @@ export async function POST(request: Request) {
     }
 
     try {
-      // Apply comprehensive security checks and safety measures
-      let safeQuery
-      try {
-        safeQuery = makeSafeQuery(sql, activeConnection.db_type, {
-          maxRows: 1000,      // Limit to 1000 rows
-          timeoutSeconds: 30, // 30 second timeout
-        })
-      } catch (securityError: any) {
-        return NextResponse.json(
-          { error: securityError.message },
-          { status: 400 }
-        )
-      }
-
-      // Log warnings if any
-      if (safeQuery.validation.warnings.length > 0) {
-        console.warn('Query warnings:', safeQuery.validation.warnings)
-      }
+      // Apply safety checks (read-only enforcement, etc.)
+      const safeQuery = makeSafeQuery(sql, activeConnection.db_type)
 
       // Execute query using adapter
+      const startTime = Date.now()
       const result = await adapter.executeWithTimeout(
         safeQuery.sql,
         safeQuery.validation.recommendedTimeout || 30
       )
+      const executionTimeMs = Date.now() - startTime
+
+      // Update history with success
+      if (historyId) {
+        await updateQueryHistory(historyId, {
+          executed: true,
+          executionTimeMs,
+          rowCount: result.rows.length,
+        })
+      }
 
       // NEW: Fetch schema knowledge for enhanced visualizations
       let schemaKnowledge = null
       let primaryTable = null
 
       try {
-        // Parse SQL to extract primary table
-        const parsedSQL = parseSQL(sql)
-        if (parsedSQL.isValid && parsedSQL.tables.length > 0) {
-          primaryTable = parsedSQL.tables[0]
-        }
+        // Parse SQL to identify tables
+        const parsed = parseSQL(sql)
+        primaryTable = parsed.primaryTable
 
-        // Get cached schema for the connection
-        const cachedSchema = await getCachedSchema(activeConnection.id)
-
-        if (cachedSchema) {
-          // Build or retrieve schema knowledge
+        if (primaryTable) {
           schemaKnowledge = await getOrBuildSchemaKnowledge(
+            user.id,
             activeConnection.id,
-            cachedSchema
+            primaryTable
           )
-          console.log('[Execute API] Schema knowledge loaded for visualizations')
-        } else {
-          console.log('[Execute API] No cached schema available - visualizations will use value inference')
         }
-      } catch (schemaError) {
-        console.error('[Execute API] Error loading schema knowledge:', schemaError)
-        // Don't fail the query execution - just log the error
+      } catch (e) {
+        console.warn('Failed to get schema knowledge:', e)
       }
 
       return NextResponse.json(
         {
-          results: result.rows,
-          rowCount: result.rowCount || 0,
-          executionTime: result.executionTime,
-          fields: result.fields || [], // Include field metadata for visualizations
-          // NEW: Include schema knowledge for V2 visualizations
+          results: result.rows, // Frontend expects 'results'
+          rows: result.rows,    // Keep 'rows' for backward compatibility if needed
+          executionTime: executionTimeMs, // Frontend expects 'executionTime'
+          rowCount: result.rows.length,
+          fields: result.fields,
+          // Include schema knowledge if available
           schemaKnowledge: schemaKnowledge ? {
-            connectionId: schemaKnowledge.connectionId,
-            tables: Array.from(schemaKnowledge.tables.entries()).map(([tableName, columns]) => ({
+            table: schemaKnowledge.table,
+            columns: Object.entries(schemaKnowledge.columns).map(([tableName, columns]: [string, any[]]) => ({
               name: tableName,
               columns: columns.map(col => ({
                 columnName: col.columnName,
@@ -180,6 +185,14 @@ export async function POST(request: Request) {
         errorMessage = "Query timeout (exceeded 30 seconds)"
       } else if (queryError.message) {
         errorMessage = queryError.message
+      }
+
+      // Update history with error
+      if (historyId) {
+        await updateQueryHistory(historyId, {
+          executed: false, // Failed execution
+          errorMessage
+        })
       }
 
       return NextResponse.json(

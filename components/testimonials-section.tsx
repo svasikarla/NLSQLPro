@@ -1,6 +1,7 @@
 "use client"
 
 import { Star } from "lucide-react"
+import { ScrollReveal } from "@/components/ui/scroll-reveal"
 
 const testimonials = [
   {
@@ -32,30 +33,34 @@ export default function TestimonialsSection() {
   return (
     <section id="testimonials" className="py-20 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl sm:text-5xl font-bold mb-6 text-balance">What Developers Are Saying</h2>
-          <p className="text-lg text-muted-foreground text-balance">
-            Real feedback from developers using NLSQL Pro
-          </p>
-        </div>
+        <ScrollReveal>
+          <div className="text-center mb-16">
+            <h2 className="text-4xl sm:text-5xl font-bold mb-6 text-balance">What Developers Are Saying</h2>
+            <p className="text-lg text-muted-foreground text-balance">
+              Real feedback from developers using NLSQL Pro
+            </p>
+          </div>
+        </ScrollReveal>
 
         <div className="grid md:grid-cols-3 gap-8">
           {testimonials.map((testimonial, idx) => (
-            <div key={idx} className="bg-card border border-border rounded-lg p-8">
-              <div className="flex gap-1 mb-4">
-                {Array.from({ length: testimonial.rating }).map((_, i) => (
-                  <Star key={i} size={18} className="fill-accent text-accent" />
-                ))}
-              </div>
+            <ScrollReveal key={idx} delay={idx * 100}>
+              <div className="bg-card border border-border rounded-lg p-8 h-full">
+                <div className="flex gap-1 mb-4">
+                  {Array.from({ length: testimonial.rating }).map((_, i) => (
+                    <Star key={i} size={18} className="fill-accent text-accent" />
+                  ))}
+                </div>
 
-              <p className="text-foreground mb-6 leading-relaxed italic">"{testimonial.quote}"</p>
+                <p className="text-foreground mb-6 leading-relaxed italic">"{testimonial.quote}"</p>
 
-              <div>
-                <p className="font-bold text-foreground">{testimonial.author}</p>
-                <p className="text-sm text-muted-foreground">{testimonial.role}</p>
-                <p className="text-sm text-accent font-medium">{testimonial.company}</p>
+                <div>
+                  <p className="font-bold text-foreground">{testimonial.author}</p>
+                  <p className="text-sm text-muted-foreground">{testimonial.role}</p>
+                  <p className="text-sm text-accent font-medium">{testimonial.company}</p>
+                </div>
               </div>
-            </div>
+            </ScrollReveal>
           ))}
         </div>
       </div>

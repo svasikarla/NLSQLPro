@@ -118,9 +118,9 @@ export function QueryHistory({
                   </p>
 
                   <pre className="text-xs bg-muted/50 rounded p-2 overflow-x-auto font-mono text-muted-foreground">
-                    {item.generatedSQL.length > 100
-                      ? item.generatedSQL.substring(0, 100) + "..."
-                      : item.generatedSQL}
+                    {(item.generatedSQL || '').length > 100
+                      ? (item.generatedSQL || '').substring(0, 100) + "..."
+                      : (item.generatedSQL || '')}
                   </pre>
                 </Card>
               ))}

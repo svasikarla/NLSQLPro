@@ -11,6 +11,7 @@ import {
   getRateLimitHeaders,
   logRateLimitEvent,
 } from "@/lib/ratelimit/rate-limiter"
+import { logQueryHistory } from "@/lib/logging/audit-logger"
 
 export async function POST(request: Request) {
   try {
@@ -23,18 +24,26 @@ export async function POST(request: Request) {
       )
     }
 
+    const supabase = await createClient()
+
+    // Get authenticated user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     // SECURITY: Detect prompt injection attempts
     const injectionDetection = detectPromptInjection(query)
 
     if (!injectionDetection.isSafe) {
       const errorMessage = getSecurityErrorMessage(injectionDetection)
 
-      // Log security incident (will include user ID after auth check)
-      console.error('[Security] Prompt injection blocked:', {
-        riskLevel: injectionDetection.riskLevel,
-        threats: injectionDetection.threats,
-        queryPreview: query.substring(0, 100),
-      })
+      // Log security incident
+      await logSecurityIncident(user.id, query, injectionDetection)
 
       return NextResponse.json(
         {
@@ -70,17 +79,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const supabase = await createClient()
 
-    // Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
     // RATE LIMITING: Check query generation limit (LLM API calls)
     const rateLimitResult = await checkQueryGenerationLimit(user.id)
@@ -99,10 +98,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Log security incident with user context
-    if (!injectionDetection.isSafe) {
-      logSecurityIncident(user.id, query, injectionDetection)
-    }
+
 
     // Get active connection
     const activeConnection = await getActiveConnection(user.id)
@@ -137,7 +133,24 @@ export async function POST(request: Request) {
       const exampleQueries = adapter.getExampleQueries()
 
       // Generate SQL with automatic retry on validation failures
-      const { generateSQLWithRetry } = await import('@/lib/llm/sql-generator')
+      const { generateSQLWithRetry, detectAmbiguity, generateExplanation } = await import('@/lib/llm/sql-generator')
+
+      // STEP 1: Check for Ambiguity (unless user provided a clarification context)
+      // We assume if the query is long or has specific structure, it might be a clarification.
+      // For now, let's run it for every new query.
+      // Optimization: Pass a flag from frontend if it's a "clarified" query to skip this.
+
+      // Only check ambiguity if the query is short (< 10 words) or contains vague keywords
+      // For this MVP, we'll check it if it's not explicitly skipped (TODO: Add skip flag)
+      const ambiguityResult = await detectAmbiguity(query, promptContext.schemaText)
+
+      if (ambiguityResult.isAmbiguous && ambiguityResult.options && ambiguityResult.options.length > 0) {
+        return NextResponse.json({
+          status: 'clarification_needed',
+          options: ambiguityResult.options,
+          reasoning: ambiguityResult.reasoning
+        })
+      }
 
       const result = await generateSQLWithRetry({
         query,
@@ -153,12 +166,22 @@ export async function POST(request: Request) {
         validator: (sql: string) => adapter.validateQuery(sql),
       })
 
+      // Log successful generation
+      await logQueryHistory({
+        userId: user.id,
+        connectionId: activeConnection.id,
+        nlQuery: query,
+        generatedSql: result.sql,
+        executed: false,
+      })
+
       return NextResponse.json(
         {
           sql: result.sql,
           confidence: result.confidence,
           attempts: result.attempts,
           warnings: result.validation.warnings,
+          explanation: await generateExplanation(result.sql, query)
         },
         {
           headers: getRateLimitHeaders(rateLimitResult),

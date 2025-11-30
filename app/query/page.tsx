@@ -12,6 +12,8 @@ import { QueryHistory } from "@/components/query-history"
 import { QueryResultsViewer } from "@/components/query-results-viewer"
 import { useQueryHistory } from "@/hooks/use-query-history"
 import { createClient } from "@/lib/supabase/client"
+import { ClarificationDialog } from "@/components/clarification-dialog"
+import { GlossaryManager } from "@/components/glossary-manager"
 
 interface QueryResult {
   sql: string
@@ -42,6 +44,12 @@ export default function QueryPage() {
   const [copied, setCopied] = useState(false)
   const [activeConnection, setActiveConnection] = useState<string | null>(null)
   const [loadingConnection, setLoadingConnection] = useState(true)
+
+  // Clarification State
+  const [clarificationOpen, setClarificationOpen] = useState(false)
+  const [clarificationOptions, setClarificationOptions] = useState<string[]>([])
+  const [clarificationReasoning, setClarificationReasoning] = useState("")
+  const [explanation, setExplanation] = useState("")
 
   const { history, addToHistory, clearHistory, deleteItem } = useQueryHistory()
 
@@ -97,8 +105,18 @@ export default function QueryPage() {
         throw new Error(data.error || "Failed to generate SQL")
       }
 
+      // Handle Clarification Request
+      if (data.status === 'clarification_needed') {
+        setClarificationOptions(data.options)
+        setClarificationReasoning(data.reasoning)
+        setClarificationOpen(true)
+        setIsGenerating(false)
+        return
+      }
+
       setGeneratedSQL(data.sql)
       setEditedSQL(data.sql)
+      setExplanation(data.explanation || "")
 
       // Save to history
       addToHistory(naturalQuery, data.sql)
@@ -252,8 +270,65 @@ export default function QueryPage() {
     document.body.removeChild(link)
   }
 
+  const handleClarificationSelect = (option: string) => {
+    setClarificationOpen(false)
+    // Append clarification to query and re-submit
+    const clarifiedQuery = `${naturalQuery} (Clarification: ${option})`
+    setNaturalQuery(clarifiedQuery)
+    // Trigger generation immediately with new query
+    setTimeout(() => {
+      // We need to call handleGenerate but with the new query state.
+      // Since state updates are async, we can't just call handleGenerate() immediately if it uses state.
+      // Better approach: Refactor handleGenerate to accept an optional query arg.
+      // For now, let's just update the state and let the user click generate, OR simpler:
+      // Just call the API directly here to avoid state complexity.
+      submitClarifiedQuery(clarifiedQuery)
+    }, 100)
+  }
+
+  const submitClarifiedQuery = async (query: string) => {
+    setIsGenerating(true)
+    setError("")
+    setGeneratedSQL("")
+    setEditedSQL("")
+    setIsEditing(false)
+    setQueryResults(null)
+
+    try {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate SQL")
+      }
+
+      setGeneratedSQL(data.sql)
+      setEditedSQL(data.sql)
+      setExplanation(data.explanation || "")
+
+      addToHistory(query, data.sql)
+    } catch (err: any) {
+      setError(err.message)
+      setErrorContext("generation")
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
+      <ClarificationDialog
+        isOpen={clarificationOpen}
+        onClose={() => setClarificationOpen(false)}
+        options={clarificationOptions}
+        reasoning={clarificationReasoning}
+        onSelect={handleClarificationSelect}
+      />
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -280,6 +355,7 @@ export default function QueryPage() {
               onClearHistory={clearHistory}
               onDeleteItem={deleteItem}
             />
+            <GlossaryManager />
             <Button
               variant="outline"
               size="sm"
@@ -481,6 +557,8 @@ export default function QueryPage() {
               schemaKnowledge={schemaKnowledge}
               tableName={primaryTable}
               useSchemaAwareness={true}
+              explanation={explanation}
+              query={naturalQuery}
             />
           </div>
         )}

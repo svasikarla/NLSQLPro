@@ -11,7 +11,8 @@ import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Download, BarChart3, LineChart, PieChart as PieChartIcon, Table as TableIcon, Loader2, Info, ScatterChart as ScatterChartIcon, Activity } from 'lucide-react'
+import { Download, BarChart3, LineChart, PieChart as PieChartIcon, Table as TableIcon, Loader2, Info, ScatterChart as ScatterChartIcon, Activity, Sparkles, ThumbsUp } from 'lucide-react'
+import { toast } from 'sonner'
 import { FieldInfo } from '@/lib/database/types/database'
 import { ChartType } from '@/lib/visualization/chart-detector'
 import { detectBestVisualizationV2, VisualizationAnalysisV2, ChartRecommendationV2 } from '@/lib/visualization/chart-detector-v2'
@@ -39,7 +40,12 @@ interface QueryResultsViewerProps {
   schemaKnowledge?: SchemaKnowledge
   tableName?: string
   // NEW: Enable/disable schema-aware features
+  // NEW: Enable/disable schema-aware features
   useSchemaAwareness?: boolean
+  // NEW: Natural language explanation
+  explanation?: string
+  // NEW: Original query for saving
+  query?: string
 }
 
 export function QueryResultsViewer({
@@ -53,6 +59,8 @@ export function QueryResultsViewer({
   schemaKnowledge,
   tableName,
   useSchemaAwareness = true, // Default to true for enhanced features
+  explanation,
+  query,
 }: QueryResultsViewerProps) {
   const [analysisV2, setAnalysisV2] = useState<VisualizationAnalysisV2 | null>(null)
   const [selectedChartType, setSelectedChartType] = useState<ChartType>('table')
@@ -264,8 +272,49 @@ export function QueryResultsViewer({
     }
   }
 
+  const handleSaveGoldenQuery = async () => {
+    if (!sql || !query) return
+
+    try {
+      const response = await fetch('/api/golden-queries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          naturalQuery: query,
+          sqlQuery: sql,
+          metadata: {
+            schemaContext: dataStatsV2?.schemaConfidence
+          }
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to save')
+
+      toast.success('Query saved to memory', {
+        description: 'This example will be used to improve future results.'
+      })
+    } catch (e) {
+      toast.error('Failed to save query')
+    }
+  }
+
   return (
     <Card className="p-6">
+      {/* Natural Language Explanation */}
+      {explanation && (
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg flex items-start gap-3">
+          <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+          <div>
+            <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
+              Natural Language Summary
+            </h4>
+            <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">
+              {explanation}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
@@ -287,6 +336,12 @@ export function QueryResultsViewer({
             <Button variant="outline" size="sm" onClick={onExportJSON} className="gap-2">
               <Download size={16} />
               JSON
+            </Button>
+          )}
+          {query && (
+            <Button variant="outline" size="sm" onClick={handleSaveGoldenQuery} className="gap-2 text-green-600 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/20">
+              <ThumbsUp size={16} />
+              Save as Example
             </Button>
           )}
         </div>
@@ -423,10 +478,10 @@ export function QueryResultsViewer({
                 <div
                   key={idx}
                   className={`p-3 rounded-lg border text-sm ${insight.severity === 'critical'
-                      ? 'border-destructive/50 bg-destructive/5'
-                      : insight.severity === 'warning'
-                        ? 'border-yellow-500/50 bg-yellow-500/5'
-                        : 'border-blue-500/50 bg-blue-500/5'
+                    ? 'border-destructive/50 bg-destructive/5'
+                    : insight.severity === 'warning'
+                      ? 'border-yellow-500/50 bg-yellow-500/5'
+                      : 'border-blue-500/50 bg-blue-500/5'
                     }`}
                 >
                   <div className="flex items-start gap-2">

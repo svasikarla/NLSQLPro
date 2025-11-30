@@ -1,6 +1,7 @@
 "use client"
 
-import { Shield, Zap, Code, Lock, Cpu, Sparkles } from "lucide-react"
+import { Shield, Zap, Code, Lock, Cpu, Sparkles, MessageCircleQuestion, BookOpen, ThumbsUp, FileText } from "lucide-react"
+import { ScrollReveal } from "@/components/ui/scroll-reveal"
 
 const features = [
   {
@@ -33,6 +34,26 @@ const features = [
     title: "Smart Schema Analysis",
     description: "Auto-refresh schema on demand. Relationship detection for accurate JOINs. Fingerprint-based change detection.",
   },
+  {
+    icon: MessageCircleQuestion,
+    title: "Smart Clarification",
+    description: "Resolves ambiguity by asking clarifying questions (e.g., 'By revenue or volume?') instead of guessing.",
+  },
+  {
+    icon: FileText,
+    title: "Natural Language Explainer",
+    description: "Converts complex SQL back into plain English, helping non-technical users verify query logic instantly.",
+  },
+  {
+    icon: ThumbsUp,
+    title: "Golden Query Memory",
+    description: "Learns from your feedback. Save correct queries as examples to improve future accuracy automatically.",
+  },
+  {
+    icon: BookOpen,
+    title: "Business Glossary",
+    description: "Define your own business terms (e.g., 'Churned User') and map them to specific SQL logic for precise results.",
+  },
 ]
 
 export default function FeaturesSection() {
@@ -42,45 +63,48 @@ export default function FeaturesSection() {
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent pointer-events-none" />
 
       <div className="max-w-6xl mx-auto relative z-10">
-        <div className="text-center mb-20">
-          <div className="inline-block px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
-            <span className="text-sm font-semibold text-primary">Features</span>
+        <ScrollReveal>
+          <div className="text-center mb-20">
+            <div className="inline-block px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
+              <span className="text-sm font-semibold text-primary">Features</span>
+            </div>
+            <h2 className="text-4xl sm:text-6xl font-extrabold mb-6 text-balance">
+              Powerful Features for <span className="gradient-text">Every Use Case</span>
+            </h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto text-balance leading-relaxed">
+              Everything you need to query your data intelligently and securely
+            </p>
           </div>
-          <h2 className="text-4xl sm:text-6xl font-extrabold mb-6 text-balance">
-            Powerful Features for <span className="gradient-text">Every Use Case</span>
-          </h2>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto text-balance leading-relaxed">
-            Everything you need to query your data intelligently and securely
-          </p>
-        </div>
+        </ScrollReveal>
 
         <div className="grid md:grid-cols-3 gap-8">
           {features.map((feature, idx) => {
             const Icon = feature.icon
             return (
-              <div
-                key={idx}
-                className="group relative bg-card/50 backdrop-blur-sm border border-border/50 rounded-2xl p-8 card-hover-effect glow-on-hover overflow-hidden"
-              >
-                {/* Gradient overlay on hover */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <ScrollReveal key={idx} delay={idx * 50}>
+                <div
+                  className="group relative bg-card/50 backdrop-blur-sm border border-border/50 rounded-2xl p-8 card-hover-effect glow-on-hover overflow-hidden h-full"
+                >
+                  {/* Gradient overlay on hover */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-                {/* Content */}
-                <div className="relative z-10">
-                  <div className="w-14 h-14 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-lg shadow-primary/20">
-                    <Icon size={26} className="text-primary-foreground" />
+                  {/* Content */}
+                  <div className="relative z-10">
+                    <div className="w-14 h-14 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-lg shadow-primary/20">
+                      <Icon size={26} className="text-primary-foreground" />
+                    </div>
+                    <h3 className="text-xl font-bold mb-3 text-foreground group-hover:text-primary transition-colors">
+                      {feature.title}
+                    </h3>
+                    <p className="text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
+                      {feature.description}
+                    </p>
                   </div>
-                  <h3 className="text-xl font-bold mb-3 text-foreground group-hover:text-primary transition-colors">
-                    {feature.title}
-                  </h3>
-                  <p className="text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
-                    {feature.description}
-                  </p>
-                </div>
 
-                {/* Corner accent */}
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-accent/20 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              </div>
+                  {/* Corner accent */}
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-accent/20 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+              </ScrollReveal>
             )
           })}
         </div>

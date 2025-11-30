@@ -269,14 +269,16 @@ export function getSecurityErrorMessage(result: DetectionResult): string {
   }
 }
 
+import { logSecurityEvent } from '@/lib/logging/audit-logger'
+
 /**
  * Log security incidents for audit purposes
  */
-export function logSecurityIncident(
+export async function logSecurityIncident(
   userId: string,
   query: string,
   result: DetectionResult
-): void {
+): Promise<void> {
   if (!result.isSafe) {
     console.warn('[Security] Prompt injection detected', {
       userId,
@@ -286,7 +288,16 @@ export function logSecurityIncident(
       timestamp: new Date().toISOString(),
     })
 
-    // In production, send to monitoring service (Sentry, etc.)
-    // sendToMonitoring({ type: 'prompt_injection', userId, result })
+    // Persist to database
+    await logSecurityEvent({
+      userId,
+      eventType: 'prompt_injection',
+      severity: result.riskLevel,
+      details: {
+        threats: result.threats,
+        detectedPatterns: result.detectedPatterns,
+        queryPreview: query.substring(0, 500), // Store a bit more context
+      },
+    })
   }
 }

@@ -2,117 +2,104 @@
 
 import { Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ScrollReveal } from "@/components/ui/scroll-reveal"
 
 const plans = [
   {
-    name: "Free",
-    description: "Perfect for individual developers and testing",
+    name: "Starter",
     price: "Free",
-    period: "Forever",
-    features: [
-      "Unlimited queries",
-      "Multiple database connections",
-      "PostgreSQL support",
-      "AI-powered SQL generation",
-      "Export to CSV/JSON",
-      "Query history",
-      "Schema visualization",
-    ],
+    description: "Perfect for hobby projects and testing.",
+    features: ["50 queries per month", "1 database connection", "Basic schema caching", "Community support"],
     cta: "Get Started",
-    featured: true,
+    popular: false,
   },
   {
     name: "Pro",
-    description: "Coming soon - For teams and businesses",
-    price: "TBD",
-    period: "Future release",
+    price: "$29",
+    period: "/month",
+    description: "For professional developers and small teams.",
     features: [
-      "Everything in Free",
+      "Unlimited queries",
+      "5 database connections",
+      "Advanced schema caching",
+      "Priority email support",
       "Team collaboration",
-      "Shared connections",
-      "Advanced permissions",
-      "Priority support",
-      "Extended history",
-      "Custom integrations",
     ],
-    cta: "Join Waitlist",
-    featured: false,
+    cta: "Start Free Trial",
+    popular: true,
   },
   {
     name: "Enterprise",
-    description: "Coming soon - Custom solutions for organizations",
     price: "Custom",
-    period: "Future release",
+    description: "For large organizations with custom needs.",
     features: [
-      "Everything in Pro",
-      "SSO & MFA",
-      "Dedicated support",
-      "SLA guarantees",
-      "On-premise deployment",
-      "Custom features",
+      "Unlimited everything",
+      "Custom deployment (VPC)",
+      "SSO & Audit logs",
+      "Dedicated success manager",
+      "SLA guarantee",
       "Compliance assistance",
     ],
     cta: "Contact Us",
-    featured: false,
+    popular: false,
   },
 ]
 
 export default function PricingSection() {
   return (
-    <section id="pricing" className="py-20 px-4 sm:px-6 lg:px-8">
+    <section id="pricing" className="py-24 px-4 sm:px-6 lg:px-8 relative">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl sm:text-5xl font-bold mb-6 text-balance">Simple, Transparent Pricing</h2>
-          <p className="text-lg text-muted-foreground text-balance">
-            Start free. Scale as you grow. No credit card required.
-          </p>
-        </div>
+        <ScrollReveal>
+          <div className="text-center mb-16">
+            <h2 className="text-4xl sm:text-5xl font-bold mb-6 text-balance">Simple, Transparent Pricing</h2>
+            <p className="text-lg text-muted-foreground text-balance">
+              Start for free, upgrade as you grow. No hidden fees.
+            </p>
+          </div>
+        </ScrollReveal>
 
         <div className="grid md:grid-cols-3 gap-8">
           {plans.map((plan, idx) => (
-            <div
-              key={idx}
-              className={`rounded-lg border transition-all duration-300 ${
-                plan.featured
-                  ? "bg-gradient-to-br from-primary/10 to-accent/10 border-accent/50 md:scale-105 md:z-10"
-                  : "bg-card border-border hover:border-border"
-              } p-8`}
-            >
-              {plan.featured && (
-                <div className="mb-4 inline-block px-3 py-1 rounded-full bg-accent/20 text-accent text-xs font-bold uppercase">
-                  Most Popular
-                </div>
-              )}
-
-              <h3 className="text-2xl font-bold mb-2 text-foreground">{plan.name}</h3>
-              <p className="text-sm text-muted-foreground mb-6">{plan.description}</p>
-
-              <div className="mb-8">
-                <p className="text-4xl font-bold text-foreground">{plan.price}</p>
-                <p className="text-sm text-muted-foreground mt-2">{plan.period}</p>
-              </div>
-
-              <Button
-                className={`w-full mb-8 ${
-                  plan.featured
-                    ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                    : "border-border hover:bg-card"
-                }`}
-                variant={plan.featured ? "default" : "outline"}
-                onClick={() => (window.location.href = "/auth/signup")}
+            <ScrollReveal key={idx} delay={idx * 100}>
+              <div
+                className={`relative rounded-2xl p-8 border ${plan.popular
+                    ? "bg-card border-primary shadow-2xl shadow-primary/10 scale-105 z-10"
+                    : "bg-card/50 border-border"
+                  }`}
               >
-                {plan.cta}
-              </Button>
-
-              <div className="space-y-4">
-                {plan.features.map((feature, fidx) => (
-                  <div key={fidx} className="flex gap-3">
-                    <Check size={18} className="text-accent flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-foreground/80">{feature}</p>
+                {plan.popular && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full">
+                    MOST POPULAR
                   </div>
-                ))}
+                )}
+
+                <div className="mb-8">
+                  <h3 className="text-xl font-bold mb-2">{plan.name}</h3>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-extrabold">{plan.price}</span>
+                    {plan.price !== "Custom" && plan.price !== "Free" && <span className="text-muted-foreground">/month</span>}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2">{plan.description}</p>
+                </div>
+
+                <Button
+                  className={`w-full mb-8 ${plan.popular ? "bg-primary hover:bg-primary/90" : "bg-secondary hover:bg-secondary/80"}`}
+                  variant={plan.popular ? "default" : "secondary"}
+                  onClick={() => (window.location.href = "/auth/signup")}
+                >
+                  {plan.cta}
+                </Button>
+
+                <div className="space-y-4">
+                  {plan.features.map((feature, fidx) => (
+                    <div key={fidx} className="flex gap-3">
+                      <Check size={18} className="text-accent flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-foreground/80">{feature}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            </ScrollReveal>
           ))}
         </div>
       </div>
