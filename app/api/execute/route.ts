@@ -139,8 +139,8 @@ export async function POST(request: Request) {
           fields: result.fields,
           // Include schema knowledge if available
           schemaKnowledge: schemaKnowledge ? {
-            table: schemaKnowledge.table,
-            columns: Object.entries(schemaKnowledge.columns).map(([tableName, columns]: [string, any[]]) => ({
+            connectionId: schemaKnowledge.connectionId,
+            tables: Array.from(schemaKnowledge.tables.entries()).map(([tableName, columns]) => ({
               name: tableName,
               columns: columns.map(col => ({
                 columnName: col.columnName,
